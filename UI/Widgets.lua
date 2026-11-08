@@ -9,6 +9,7 @@ local painted = {}
 local CREST_TEXTURE = "Interface\\TargetingFrame\\UI-Classes-Circles"
 local RING_TEXTURE = "Interface\\AddOns\\Hangout\\Media\\ring.png"
 local RING_EXTRA_SIZE = 4
+local SCROLL_BAR_ALPHA = 0.5
 
 local function PaintRegion(entry)
 	if entry.isText then
@@ -144,11 +145,18 @@ function Widgets.Field(parent, width)
 	return holder, field
 end
 
+-- A quiet scroll bar that only appears when there is something to scroll.
+function Widgets.ScrollBar(parent)
+	local scrollBar = CreateFrame("EventFrame", nil, parent, "MinimalScrollBar")
+	scrollBar:SetHideIfUnscrollable(true)
+	scrollBar:SetAlpha(SCROLL_BAR_ALPHA)
+	return scrollBar
+end
+
 -- Returns a virtualized list and its scroll bar. The caller anchors both.
 function Widgets.ScrollList(parent, view)
 	local scrollBox = CreateFrame("Frame", nil, parent, "WowScrollBoxList")
-	local scrollBar = CreateFrame("EventFrame", nil, parent, "MinimalScrollBar")
-	scrollBar:SetHideIfUnscrollable(true)
+	local scrollBar = Widgets.ScrollBar(parent)
 	ScrollUtil.InitScrollBoxListWithScrollBar(scrollBox, scrollBar, view)
 	return scrollBox, scrollBar
 end

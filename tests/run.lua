@@ -1117,13 +1117,15 @@ Test("text stays readable on the player's bubble in every theme", function()
 	local ns = Boot()
 	for _, preset in ipairs(ns.Theme.PRESET_ORDER) do
 		ns.Theme.SetPreset(preset)
-		local tintR, tintG, tintB, alpha = ns.Theme.Color("bubbleMine")
-		local baseR, baseG, baseB = ns.Theme.Color("panel")
-		local r = baseR + (tintR - baseR) * alpha
-		local g = baseG + (tintG - baseG) * alpha
-		local b = baseB + (tintB - baseB) * alpha
-		local textR, textG, textB = ns.Theme.Color("text")
-		assert(ContrastOf(textR, textG, textB, r, g, b) >= 4.5, preset .. " text on the player's bubble")
+		for _, token in ipairs({ "bubbleMine", "bubbleMineHover", "bubbleTheirsHover" }) do
+			local tintR, tintG, tintB, alpha = ns.Theme.Color(token)
+			local baseR, baseG, baseB = ns.Theme.Color("panel")
+			local r = baseR + (tintR - baseR) * alpha
+			local g = baseG + (tintG - baseG) * alpha
+			local b = baseB + (tintB - baseB) * alpha
+			local textR, textG, textB = ns.Theme.Color("text")
+			assert(ContrastOf(textR, textG, textB, r, g, b) >= 4.5, preset .. " text on " .. token)
+		end
 	end
 end)
 

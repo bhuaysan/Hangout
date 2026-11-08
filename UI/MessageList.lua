@@ -21,6 +21,8 @@ local BUBBLE_SLICE_MARGIN = 8
 local BUBBLE_PAD_X = 10
 local BUBBLE_PAD_Y = 6
 local BUBBLE_MAX_SHARE = 0.72
+local BUBBLE_MAX_WIDTH = 520 -- long lines are hard to read in a wide window
+local BUBBLE_REACTION_HEIGHT = 16
 local BUBBLE_TOP_HEAD = 8
 local BUBBLE_TOP_FOLLOWING = 1
 local BUBBLE_BOTTOM = 2
@@ -168,7 +170,7 @@ end
 
 local function BubbleTextWidth()
 	local rowWidth = scrollBox:GetWidth()
-	local largest = math.min(math.floor(rowWidth * BUBBLE_MAX_SHARE),
+	local largest = math.min(BUBBLE_MAX_WIDTH, math.floor(rowWidth * BUBBLE_MAX_SHARE),
 		rowWidth - TEXT_LEFT - SIDE_PADDING - BUBBLE_TIME_ROOM)
 	return largest - BUBBLE_PAD_X * 2
 end
@@ -180,7 +182,7 @@ end
 local function ExtentOf(_, element)
 	if IsBubble(element) then
 		return BubbleTop(element) + BodyHeight(element, BubbleTextWidth()) + BUBBLE_PAD_Y * 2 + BUBBLE_BOTTOM
-			+ (element.reactions and REACTION_ROW_HEIGHT or 0)
+			+ (element.reactions and BUBBLE_REACTION_HEIGHT or 0)
 	end
 	if element.kind == "locked" then
 		return HEADER_HEIGHT + LineHeight() * LOCKED_MAX_LINES + ROW_GAP
@@ -234,14 +236,33 @@ local function OnRowMouseUp(self, button)
 	end
 end
 
+local function PaintBubble(frame, element, isHovered)
+	local token
+	if element.outgoing then
+		token = isHovered and "bubbleMineHover" or "bubbleMine"
+	else
+		token = isHovered and "bubbleTheirsHover" or "selected"
+	end
+	frame.bubble:SetVertexColor(ns.Theme.Color(token))
+end
+
+-- A bubble lights up by itself. Only full-width rows get the row highlight.
 local function OnRowEnter(self)
-	if self.element and self.element.kind == "message" then
+	local element = self.element
+	if not element or element.kind ~= "message" then return end
+	if IsBubble(element) then
+		PaintBubble(self, element, true)
+	else
 		self.hover:Show()
 	end
 end
 
 local function OnRowLeave(self)
 	self.hover:Hide()
+	local element = self.element
+	if element and IsBubble(element) then
+		PaintBubble(self, element, false)
+	end
 end
 
 local function BuildRow(frame)
@@ -314,7 +335,7 @@ local function LayoutBubble(frame, element)
 	frame.bubble:ClearAllPoints()
 	frame.bubble:SetPoint(outgoing and "TOPRIGHT" or "TOPLEFT", outgoing and -SIDE_PADDING or TEXT_LEFT, top)
 	frame.bubble:SetSize(element.bodyWidth + BUBBLE_PAD_X * 2, element.bodyHeight + BUBBLE_PAD_Y * 2)
-	frame.bubble:SetVertexColor(ns.Theme.Color(outgoing and "bubbleMine" or "selected"))
+	PaintBubble(frame, element, false)
 
 	frame.crest:ClearAllPoints()
 	frame.crest:SetPoint("TOPLEFT", SIDE_PADDING, top)

@@ -428,10 +428,9 @@ function SettingsUI.Create(window, header)
 		ns.Fire("SETTINGS_TOGGLED", false)
 	end)
 
-	local scrollBar = CreateFrame("EventFrame", nil, panel, "MinimalScrollBar")
+	local scrollBar = ns.Widgets.ScrollBar(panel)
 	scrollBar:SetPoint("TOPRIGHT", -2, -4)
 	scrollBar:SetPoint("BOTTOMRIGHT", -2, 18)
-	scrollBar:SetHideIfUnscrollable(true)
 
 	scroller = CreateFrame("ScrollFrame", nil, panel)
 	scroller:SetPoint("TOPLEFT")
