@@ -13,7 +13,19 @@ local HEADER_HEIGHT = 20
 local ROW_GAP = 4
 local LABEL_ROW_HEIGHT = 26
 local LOCKED_MAX_LINES = 3
-local REACTION_ROW_HEIGHT = 20
+local REACTION_ROW_HEIGHT = 24
+local PILL_HEIGHT = 20
+local PILL_GAP = 4
+local PILL_BASE_WIDTH = 32
+local PILL_DIGIT_WIDTH = 6
+local TOOLBAR_BUTTON_SIZE = 24
+local TOOLBAR_PADDING = 3
+local TOOLBAR_ICON_SIZE = 16
+local TOOLBAR_OVERLAP = 6
+local TOOLBAR_RAISE = 12
+local OPENER_HEIGHT = 74
+local OPENER_AVATAR_SIZE = 46
+local QUICK_BAR = { "thumbsup", "heart", "joy" }
 local FALLBACK_LINE_HEIGHT = 15
 local CONTEXT_ROWS = 20
 
@@ -21,7 +33,7 @@ local BUBBLE_PAD_X = 10
 local BUBBLE_PAD_Y = 6
 local BUBBLE_MAX_SHARE = 0.72
 local BUBBLE_MAX_WIDTH = 520 -- long lines are hard to read in a wide window
-local BUBBLE_REACTION_HEIGHT = 16
+local BUBBLE_REACTION_HEIGHT = 24
 local BUBBLE_TOP_HEAD = 8
 local BUBBLE_TOP_FOLLOWING = 1
 local BUBBLE_BOTTOM = 2
@@ -42,6 +54,7 @@ local visibleLimit = PAGE_SIZE
 local unreadAfterId
 local highlightId
 local shownElements = {}
+local toolbar, toolbarRow
 
 local function SenderOf(message, conv)
 	if message.o == 1 then return ns.Store.AltName(message) or "You" end
@@ -110,7 +123,7 @@ function MessageList.BuildElements(conv, limit, live, unreadAfterId)
 			sender = sender,
 			class = ClassOf(message, conv),
 			mention = message.s ~= nil and message.o ~= 1 and ns.Alerts.IsMention(message.x),
-			reactions = ns.Protocol.ReactionText(message.r),
+			reactions = ns.Protocol.ReactionList(message.r),
 			time = date("%H:%M", message.t),
 			display = ns.Emoji.Display(message.x),
 			head = previous == nil
@@ -197,6 +210,9 @@ local function ExtentOf(_, element)
 		return BubbleTop(element) + BodyHeight(element, BubbleTextWidth()) + BUBBLE_PAD_Y * 2 + BUBBLE_BOTTOM
 			+ (element.reactions and BUBBLE_REACTION_HEIGHT or 0)
 	end
+	if element.kind == "opener" then
+		return OPENER_HEIGHT
+	end
 	if element.kind == "locked" then
 		return HEADER_HEIGHT + LineHeight() * LOCKED_MAX_LINES + ROW_GAP
 	end
@@ -249,6 +265,89 @@ local function OnRowMouseUp(self, button)
 	end
 end
 
+local function HideToolbar()
+	if toolbar then toolbar:Hide() end
+	toolbarRow = nil
+end
+
+-- Sits on the outer top corner of a bubble, or at the end of a full-width row.
+local function ShowToolbar(row, element)
+	if not ns.Protocol.CanReact(ns.selectedKey) then return end
+	toolbar:ClearAllPoints()
+	if not IsBubble(element) then
+		toolbar:SetPoint("TOPRIGHT", row, "TOPRIGHT", -SIDE_PADDING, TOOLBAR_RAISE)
+	elseif element.outgoing then
+		toolbar:SetPoint("BOTTOMRIGHT", row.bubble, "TOPRIGHT", 0, -TOOLBAR_OVERLAP)
+	else
+		toolbar:SetPoint("BOTTOMLEFT", row.bubble, "TOPLEFT", 0, -TOOLBAR_OVERLAP)
+	end
+	toolbarRow = row
+	toolbar.messageId = element.id
+	toolbar:Show()
+end
+
+local function CreateQuickButton(emoji, index)
+	local button = CreateFrame("Button", nil, toolbar)
+	button:SetSize(TOOLBAR_BUTTON_SIZE, TOOLBAR_BUTTON_SIZE)
+	button:SetPoint("LEFT", TOOLBAR_PADDING + (index - 1) * TOOLBAR_BUTTON_SIZE, 0)
+
+	local hover = ns.Widgets.RoundedFill(button, "hover", "ARTWORK")
+	hover:SetAllPoints()
+	hover:Hide()
+
+	local icon = button:CreateTexture(nil, "OVERLAY")
+	icon:SetSize(TOOLBAR_ICON_SIZE, TOOLBAR_ICON_SIZE)
+	icon:SetPoint("CENTER")
+	icon:SetTexture(ns.Emoji.ATLAS)
+	icon:SetTexCoord(ns.Emoji.TexCoords(ns.Emoji.IndexOf(emoji)))
+
+	button:SetScript("OnEnter", function(self)
+		hover:Show()
+		GameTooltip:SetOwner(self, "ANCHOR_TOP")
+		GameTooltip:SetText(REACTION_NAMES[emoji])
+		GameTooltip:Show()
+	end)
+	button:SetScript("OnLeave", function()
+		hover:Hide()
+		GameTooltip:Hide()
+	end)
+	button:SetScript("OnClick", function()
+		ns.Protocol.ToggleReaction(ns.selectedKey, toolbar.messageId, emoji)
+	end)
+end
+
+-- One shared bar that follows the mouse from message to message.
+local function CreateToolbar(parent)
+	toolbar = CreateFrame("Frame", nil, parent)
+	local buttons = #QUICK_BAR + 1
+	toolbar:SetSize(TOOLBAR_PADDING * 2 + buttons * TOOLBAR_BUTTON_SIZE, TOOLBAR_PADDING * 2 + TOOLBAR_BUTTON_SIZE)
+	toolbar:SetFrameLevel(toolbar:GetFrameLevel() + 15)
+	toolbar:EnableMouse(true)
+	toolbar:Hide()
+
+	ns.Widgets.RoundedFill(toolbar, "outline", "BACKGROUND"):SetAllPoints()
+	local fill = ns.Widgets.RoundedFill(toolbar, "popup", "BORDER")
+	fill:SetPoint("TOPLEFT", 1, -1)
+	fill:SetPoint("BOTTOMRIGHT", -1, 1)
+
+	for index, emoji in ipairs(QUICK_BAR) do
+		CreateQuickButton(emoji, index)
+	end
+
+	local more = ns.Widgets.IconButton(toolbar, "smile", TOOLBAR_BUTTON_SIZE, 15, "More reactions")
+	more:SetPoint("LEFT", TOOLBAR_PADDING + #QUICK_BAR * TOOLBAR_BUTTON_SIZE, 0)
+	more:SetScript("OnClick", function()
+		ShowReactionMenu(toolbarRow, toolbar.messageId)
+	end)
+
+	toolbar:SetScript("OnUpdate", function()
+		local stillHovered = toolbarRow and (toolbarRow:IsMouseOver() or toolbar:IsMouseOver())
+		if not stillHovered or ns.Window.IsFaded() then
+			HideToolbar()
+		end
+	end)
+end
+
 local function PaintBubble(frame, element, isHovered)
 	local token
 	if element.outgoing then
@@ -268,6 +367,7 @@ local function OnRowEnter(self)
 	else
 		self.hover:Show()
 	end
+	ShowToolbar(self, element)
 end
 
 local function OnRowLeave(self)
@@ -297,7 +397,14 @@ local function BuildRow(frame)
 	frame.highlight = ns.Widgets.Fill(frame, "selected")
 	frame.hover = ns.Widgets.Fill(frame, "hover")
 
-	frame.reactions = ns.Widgets.Text(frame, "GameFontHighlightSmall", "muted")
+	frame.pills = {}
+
+	frame.openerAvatar = ns.Widgets.ChatAvatar(frame, OPENER_AVATAR_SIZE, 22)
+	ns.Widgets.PlaceChatAvatar(frame.openerAvatar, "LEFT", SIDE_PADDING + 2, 0)
+	frame.openerTitle = ns.Widgets.Text(frame, "GameFontNormalLarge", "text")
+	frame.openerTitle:SetPoint("TOPLEFT", SIDE_PADDING + OPENER_AVATAR_SIZE + 14, -17)
+	frame.openerText = ns.Widgets.Text(frame, "GameFontHighlightSmall", "muted")
+	frame.openerText:SetPoint("TOPLEFT", SIDE_PADDING + OPENER_AVATAR_SIZE + 14, -40)
 
 	frame.mentionBar = ns.Widgets.Solid(frame, "accent", "ARTWORK")
 	frame.mentionBar:SetPoint("TOPLEFT", 4, 0)
@@ -324,9 +431,6 @@ local function LayoutPlainMessage(frame, element)
 
 	frame.time:ClearAllPoints()
 	frame.time:SetPoint("LEFT", frame.sender, "RIGHT", 8, 0)
-
-	frame.reactions:ClearAllPoints()
-	frame.reactions:SetPoint("TOPLEFT", frame.body, "BOTTOMLEFT", 0, -3)
 
 	if element.head then
 		frame.sender:SetText(element.sender)
@@ -362,20 +466,67 @@ local function LayoutBubble(frame, element)
 	end
 	-- A message sent from another character still says which one.
 	frame.time:SetText(outgoing and element.sender ~= "You" and (element.sender .. "  " .. element.time) or element.time)
+end
 
-	frame.reactions:ClearAllPoints()
-	if outgoing then
-		frame.reactions:SetPoint("TOPRIGHT", frame.bubble, "BOTTOMRIGHT", 0, -3)
-	else
-		frame.reactions:SetPoint("TOPLEFT", frame.bubble, "BOTTOMLEFT", 0, -3)
+local function OnPillClick(self)
+	local element = self.row.element
+	if element and element.id then
+		ns.Protocol.ToggleReaction(ns.selectedKey, element.id, self.emoji)
+	end
+end
+
+local function PillAt(frame, index)
+	local pill = frame.pills[index]
+	if not pill then
+		pill = CreateFrame("Button", nil, frame)
+		pill:SetHeight(PILL_HEIGHT)
+		pill.row = frame
+		pill.fill = ns.Widgets.Rounded(pill)
+		pill.fill:SetAllPoints()
+		pill.label = ns.Widgets.Text(pill, "GameFontHighlightSmall", "text")
+		pill.label:SetPoint("CENTER")
+		pill:SetScript("OnClick", OnPillClick)
+		frame.pills[index] = pill
+	end
+	return pill
+end
+
+-- Reaction pills in a row under the anchor, growing away from the window's edge.
+local function LayoutPills(frame, element, anchor, fromRight)
+	local list = element.reactions or {}
+	local canToggle = element.kind == "message" and ns.Protocol.CanReact(ns.selectedKey) and not ns.Window.IsFaded()
+	for index, reaction in ipairs(list) do
+		local pill = PillAt(frame, index)
+		local count = tostring(reaction.count)
+		pill.emoji = reaction.name
+		pill:SetWidth(PILL_BASE_WIDTH + (#count - 1) * PILL_DIGIT_WIDTH)
+		pill.fill:SetVertexColor(ns.Theme.Color(reaction.mine and "bubbleMine" or "selected"))
+		pill.label:SetText(ns.Emoji.Tag(reaction.name) .. " " .. count)
+		pill:ClearAllPoints()
+		if index > 1 then
+			pill:SetPoint(fromRight and "RIGHT" or "LEFT", frame.pills[index - 1], fromRight and "LEFT" or "RIGHT",
+				fromRight and -PILL_GAP or PILL_GAP, 0)
+		else
+			pill:SetPoint(fromRight and "TOPRIGHT" or "TOPLEFT", anchor, fromRight and "BOTTOMRIGHT" or "BOTTOMLEFT", 0, -3)
+		end
+		pill:EnableMouse(canToggle and true or false)
+		pill:Show()
+	end
+	for index = #list + 1, #frame.pills do
+		frame.pills[index]:Hide()
 	end
 end
 
 local function InitRow(frame, element)
 	if not frame.body then BuildRow(frame) end
+	if toolbarRow == frame then HideToolbar() end
 	frame.element = element
 
 	local isMessage = element.kind == "message"
+	local isOpener = element.kind == "opener"
+	ns.Widgets.ShowChatAvatar(frame.openerAvatar, isOpener and element or nil)
+	frame.openerTitle:SetShown(isOpener)
+	frame.openerText:SetShown(isOpener)
 	local isBubble = IsBubble(element)
 	frame.bubble:SetShown(isBubble)
 	frame.body:SetShown(isMessage)
@@ -383,18 +534,22 @@ local function InitRow(frame, element)
 	frame.time:SetShown(isMessage and element.head)
 	local hasCrest = isMessage and element.head and not (isBubble and element.outgoing)
 	ns.Widgets.SetClassCrest(frame.crest, hasCrest and element.class or nil)
-	frame.label:SetShown(not isMessage)
+	frame.label:SetShown(not isMessage and not isOpener)
 	frame.mentionBar:SetShown(isMessage and element.mention)
 	frame.highlight:SetShown(isMessage and element.id ~= nil and element.id == highlightId)
 	frame.hover:Hide()
-	frame.reactions:SetShown(isMessage and element.reactions ~= nil)
-	if isMessage and element.reactions then
-		frame.reactions:SetText(element.reactions)
-	end
 	frame:EnableMouse(not ns.Window.IsFaded())
 	frame:SetHyperlinksEnabled(not ns.Window.IsFaded())
 
+	if isOpener then
+		LayoutPills(frame, element)
+		frame.openerTitle:SetText(element.title)
+		frame.openerText:SetText(element.text)
+		return
+	end
+
 	if not isMessage then
+		LayoutPills(frame, element)
 		frame.label:ClearAllPoints()
 		if element.kind == "seen" and IsWhisper(ns.selectedKey) then
 			frame.label:SetPoint("RIGHT", -SIDE_PADDING, 0)
@@ -412,6 +567,7 @@ local function InitRow(frame, element)
 		LayoutPlainMessage(frame, element)
 	end
 	frame.body:SetText(element.display)
+	LayoutPills(frame, element, isBubble and frame.bubble or frame.body, isBubble and element.outgoing)
 end
 
 -- Locked rows use their own frame type so normal rows never receive a secret.
@@ -472,6 +628,22 @@ function MessageList.Create(parent)
 	scrollBar:SetPoint("BOTTOMRIGHT", -2, 4)
 	scrollBox:SetPoint("TOPLEFT")
 	scrollBox:SetPoint("BOTTOMRIGHT", -14, 0)
+	CreateToolbar(parent)
+end
+
+-- The first row of a chat whose whole history is on screen.
+function MessageList.OpenerFor(key, conv)
+	local label = ns.Store.LabelFor(key, conv)
+	return {
+		kind = "opener",
+		key = key,
+		class = conv.class,
+		label = label,
+		muted = conv.mute,
+		title = label,
+		text = IsWhisper(key) and ("This is the start of your saved history with " .. label .. ".")
+			or "Your history for this chat starts here.",
+	}
 end
 
 -- Rebuilds the rows, following new messages only if already at the bottom.
@@ -482,6 +654,9 @@ function MessageList.Refresh(jumpToEnd)
 	local conv = ns.Store.Get(ns.selectedKey)
 	local live = ns.Store.GetLive(ns.selectedKey)
 	shownElements = conv and MessageList.BuildElements(conv, visibleLimit, live, unreadAfterId) or {}
+	if conv and (not shownElements[1] or shownElements[1].kind ~= "older") then
+		table.insert(shownElements, 1, MessageList.OpenerFor(ns.selectedKey, conv))
+	end
 	scrollBox:SetDataProvider(CreateDataProvider(shownElements), ScrollBoxConstants.RetainScrollPosition)
 	if follow then
 		scrollBox:ScrollToEnd(ScrollBoxConstants.NoScrollInterpolation)

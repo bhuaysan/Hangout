@@ -215,7 +215,8 @@ local function SetReaction(message, emoji, bit, enabled)
 end
 
 -- The reaction line under a message, or nil if there are none.
-function Protocol.ReactionText(reactions)
+-- A message's reactions in a stable order: { name, count, mine } each, or nil.
+function Protocol.ReactionList(reactions)
 	if not reactions then return nil end
 	local names = {}
 	for name in pairs(reactions) do
@@ -223,13 +224,15 @@ function Protocol.ReactionText(reactions)
 	end
 	table.sort(names)
 
-	local parts = {}
+	local list = {}
 	for _, name in ipairs(names) do
 		local value = reactions[name]
 		local count = value % 2 + math.floor(value / 2)
-		parts[#parts + 1] = ns.Emoji.Tag(name) .. " " .. count
+		if count > 0 then
+			list[#list + 1] = { name = name, count = count, mine = value % 2 == 1 }
+		end
 	end
-	return table.concat(parts, "   ")
+	return #list > 0 and list or nil
 end
 
 function Protocol.CanReact(key)
