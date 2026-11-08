@@ -16,6 +16,17 @@ local REACTION_ROW_HEIGHT = 20
 local FALLBACK_LINE_HEIGHT = 15
 local CONTEXT_ROWS = 20
 
+local BUBBLE_TEXTURE = "Interface\\AddOns\\Hangout\\Media\\bubble.png"
+local BUBBLE_SLICE_MARGIN = 8
+local BUBBLE_PAD_X = 10
+local BUBBLE_PAD_Y = 6
+local BUBBLE_MAX_SHARE = 0.72
+local BUBBLE_TOP_HEAD = 8
+local BUBBLE_TOP_FOLLOWING = 1
+local BUBBLE_BOTTOM = 2
+local BUBBLE_TIME_GAP = 6
+local BUBBLE_TIME_ROOM = 40
+
 local REACTION_NAMES = {
 	thumbsup = "Thumbs up",
 	heart = "Heart",
@@ -80,6 +91,7 @@ function MessageList.BuildElements(conv, limit, live, unreadAfterId)
 		elements[#elements + 1] = {
 			kind = "message",
 			id = message.i,
+			outgoing = message.o == 1,
 			sender = sender,
 			class = ClassOf(message, conv),
 			mention = message.s ~= nil and message.o ~= 1 and ns.Alerts.IsMention(message.x),
@@ -124,11 +136,14 @@ local function ReadableHeight(lines)
 	return FALLBACK_LINE_HEIGHT * lines
 end
 
+-- Also records how wide the text really is, which sizes its bubble.
 local function BodyHeight(element, width)
 	if element.measuredWidth ~= width then
 		measure:SetWidth(width)
 		measure:SetText(element.display)
 		element.bodyHeight = ReadableHeight(1)
+		local textWidth = measure:GetStringWidth()
+		element.bodyWidth = canaccessvalue(textWidth) and math.min(width, math.ceil(textWidth) + 2) or width
 		element.measuredWidth = width
 	end
 	return element.bodyHeight
@@ -140,7 +155,33 @@ local function LineHeight()
 	return ReadableHeight(1)
 end
 
+-- Reactions travel over whispers, so other chats have nothing to explain.
+local function IsWhisper(key)
+	local prefix = key and key:sub(1, 1)
+	return prefix == "W" or prefix == "B"
+end
+
+-- Two people talking read best as bubbles. Busy channels keep the compact rows.
+local function IsBubble(element)
+	return element.kind == "message" and IsWhisper(ns.selectedKey)
+end
+
+local function BubbleTextWidth()
+	local rowWidth = scrollBox:GetWidth()
+	local largest = math.min(math.floor(rowWidth * BUBBLE_MAX_SHARE),
+		rowWidth - TEXT_LEFT - SIDE_PADDING - BUBBLE_TIME_ROOM)
+	return largest - BUBBLE_PAD_X * 2
+end
+
+local function BubbleTop(element)
+	return element.head and BUBBLE_TOP_HEAD or BUBBLE_TOP_FOLLOWING
+end
+
 local function ExtentOf(_, element)
+	if IsBubble(element) then
+		return BubbleTop(element) + BodyHeight(element, BubbleTextWidth()) + BUBBLE_PAD_Y * 2 + BUBBLE_BOTTOM
+			+ (element.reactions and REACTION_ROW_HEIGHT or 0)
+	end
 	if element.kind == "locked" then
 		return HEADER_HEIGHT + LineHeight() * LOCKED_MAX_LINES + ROW_GAP
 	end
@@ -178,12 +219,6 @@ local function ShowReactionsUnavailable(owner)
 	end)
 end
 
--- Reactions travel over whispers, so other chats have nothing to explain.
-local function IsWhisper(key)
-	local prefix = key and key:sub(1, 1)
-	return prefix == "W" or prefix == "B"
-end
-
 local function OnRowMouseUp(self, button)
 	local element = self.element
 	if not element then return end
@@ -211,26 +246,27 @@ end
 
 local function BuildRow(frame)
 	frame.crest = ns.Widgets.ClassCrest(frame, CREST_SIZE)
-	frame.crest:SetPoint("TOPLEFT", SIDE_PADDING, -4)
+
+	frame.bubble = frame:CreateTexture(nil, "BORDER")
+	frame.bubble:SetTexture(BUBBLE_TEXTURE)
+	frame.bubble:SetTextureSliceMargins(BUBBLE_SLICE_MARGIN, BUBBLE_SLICE_MARGIN, BUBBLE_SLICE_MARGIN, BUBBLE_SLICE_MARGIN)
+	frame.bubble:SetTextureSliceMode(Enum.UITextureSliceMode.Stretched)
 
 	frame.sender = ns.Widgets.Text(frame, "GameFontNormal", "text")
 	frame.sender:SetPoint("TOPLEFT", TEXT_LEFT, -4)
 
 	frame.time = ns.Widgets.Text(frame, "GameFontDisableSmall", "muted")
-	frame.time:SetPoint("LEFT", frame.sender, "RIGHT", 8, 0)
 
 	frame.body = ns.Widgets.Text(frame, "HangoutMessageFont", "text")
 	frame.body:SetWordWrap(true)
 
 	frame.label = ns.Widgets.Text(frame, "GameFontDisableSmall", "muted")
-	frame.label:SetPoint("CENTER")
 	frame.label:SetJustifyH("CENTER")
 
 	frame.highlight = ns.Widgets.Fill(frame, "selected")
 	frame.hover = ns.Widgets.Fill(frame, "hover")
 
 	frame.reactions = ns.Widgets.Text(frame, "GameFontHighlightSmall", "muted")
-	frame.reactions:SetPoint("TOPLEFT", frame.body, "BOTTOMLEFT", 0, -3)
 
 	frame.mentionBar = ns.Widgets.Solid(frame, "accent", "ARTWORK")
 	frame.mentionBar:SetPoint("TOPLEFT", 4, 0)
@@ -244,15 +280,78 @@ local function BuildRow(frame)
 	frame:SetScript("OnLeave", OnRowLeave)
 end
 
+-- A full-width row: crest and name on the left, with the text under the name.
+local function LayoutPlainMessage(frame, element)
+	local top = element.head and -HEADER_HEIGHT or 0
+	frame.crest:ClearAllPoints()
+	frame.crest:SetPoint("TOPLEFT", SIDE_PADDING, -4)
+
+	frame.body:ClearAllPoints()
+	frame.body:SetWidth(0)
+	frame.body:SetPoint("TOPLEFT", TEXT_LEFT, top)
+	frame.body:SetPoint("TOPRIGHT", -SIDE_PADDING, top)
+
+	frame.time:ClearAllPoints()
+	frame.time:SetPoint("LEFT", frame.sender, "RIGHT", 8, 0)
+
+	frame.reactions:ClearAllPoints()
+	frame.reactions:SetPoint("TOPLEFT", frame.body, "BOTTOMLEFT", 0, -3)
+
+	if element.head then
+		frame.sender:SetText(element.sender)
+		frame.sender:SetTextColor(ns.Theme.ClassColor(element.class))
+		frame.time:SetText(element.time)
+	end
+end
+
+-- The other person's bubble on the left, the player's on the right. The window
+-- title already names the other person, so bubbles carry no name.
+local function LayoutBubble(frame, element)
+	local outgoing = element.outgoing
+	BodyHeight(element, BubbleTextWidth())
+	local top = -BubbleTop(element)
+
+	frame.bubble:ClearAllPoints()
+	frame.bubble:SetPoint(outgoing and "TOPRIGHT" or "TOPLEFT", outgoing and -SIDE_PADDING or TEXT_LEFT, top)
+	frame.bubble:SetSize(element.bodyWidth + BUBBLE_PAD_X * 2, element.bodyHeight + BUBBLE_PAD_Y * 2)
+	frame.bubble:SetVertexColor(ns.Theme.Color(outgoing and "bubbleMine" or "selected"))
+
+	frame.crest:ClearAllPoints()
+	frame.crest:SetPoint("TOPLEFT", SIDE_PADDING, top)
+
+	frame.body:ClearAllPoints()
+	frame.body:SetWidth(element.bodyWidth)
+	frame.body:SetPoint("TOPLEFT", frame.bubble, "TOPLEFT", BUBBLE_PAD_X, -BUBBLE_PAD_Y)
+
+	frame.time:ClearAllPoints()
+	if outgoing then
+		frame.time:SetPoint("BOTTOMRIGHT", frame.bubble, "BOTTOMLEFT", -BUBBLE_TIME_GAP, 2)
+	else
+		frame.time:SetPoint("BOTTOMLEFT", frame.bubble, "BOTTOMRIGHT", BUBBLE_TIME_GAP, 2)
+	end
+	-- A message sent from another character still says which one.
+	frame.time:SetText(outgoing and element.sender ~= "You" and (element.sender .. "  " .. element.time) or element.time)
+
+	frame.reactions:ClearAllPoints()
+	if outgoing then
+		frame.reactions:SetPoint("TOPRIGHT", frame.bubble, "BOTTOMRIGHT", 0, -3)
+	else
+		frame.reactions:SetPoint("TOPLEFT", frame.bubble, "BOTTOMLEFT", 0, -3)
+	end
+end
+
 local function InitRow(frame, element)
 	if not frame.body then BuildRow(frame) end
 	frame.element = element
 
 	local isMessage = element.kind == "message"
+	local isBubble = IsBubble(element)
+	frame.bubble:SetShown(isBubble)
 	frame.body:SetShown(isMessage)
-	frame.sender:SetShown(isMessage and element.head)
+	frame.sender:SetShown(isMessage and element.head and not isBubble)
 	frame.time:SetShown(isMessage and element.head)
-	ns.Widgets.SetClassCrest(frame.crest, isMessage and element.head and element.class or nil)
+	local hasCrest = isMessage and element.head and not (isBubble and element.outgoing)
+	ns.Widgets.SetClassCrest(frame.crest, hasCrest and element.class or nil)
 	frame.label:SetShown(not isMessage)
 	frame.mentionBar:SetShown(isMessage and element.mention)
 	frame.highlight:SetShown(isMessage and element.id ~= nil and element.id == highlightId)
@@ -265,22 +364,23 @@ local function InitRow(frame, element)
 	frame:SetHyperlinksEnabled(not ns.Window.IsFaded())
 
 	if not isMessage then
+		frame.label:ClearAllPoints()
+		if element.kind == "seen" and IsWhisper(ns.selectedKey) then
+			frame.label:SetPoint("RIGHT", -SIDE_PADDING, 0)
+		else
+			frame.label:SetPoint("CENTER")
+		end
 		frame.label:SetText(element.label)
 		frame.label:SetTextColor(ns.Theme.Color(element.kind == "unread" and "accent" or "muted"))
 		return
 	end
 
-	local top = element.head and -HEADER_HEIGHT or 0
-	frame.body:ClearAllPoints()
-	frame.body:SetPoint("TOPLEFT", TEXT_LEFT, top)
-	frame.body:SetPoint("TOPRIGHT", -SIDE_PADDING, top)
-	frame.body:SetText(element.display)
-
-	if element.head then
-		frame.sender:SetText(element.sender)
-		frame.sender:SetTextColor(ns.Theme.ClassColor(element.class))
-		frame.time:SetText(element.time)
+	if isBubble then
+		LayoutBubble(frame, element)
+	else
+		LayoutPlainMessage(frame, element)
 	end
+	frame.body:SetText(element.display)
 end
 
 -- Locked rows use their own frame type so normal rows never receive a secret.

@@ -1103,6 +1103,30 @@ Test("the crest ring follows the accent color", function()
 	assert(a > 0 and a <= 1)
 end)
 
+Test("message rows record which side of a whisper they belong on", function()
+	local ns = Boot()
+	Chat(ns, "CHAT_MSG_WHISPER", { text = "hi", name = "Other Person" })
+	Chat(ns, "CHAT_MSG_WHISPER_INFORM", { text = "hello", name = "Other Person" })
+	local conv = ns.Store.Get("W:Other Person")
+	local elements = ns.MessageList.BuildElements(conv, 200)
+	Equal(elements[2].outgoing, false)
+	Equal(elements[3].outgoing, true)
+end)
+
+Test("text stays readable on the player's bubble in every theme", function()
+	local ns = Boot()
+	for _, preset in ipairs(ns.Theme.PRESET_ORDER) do
+		ns.Theme.SetPreset(preset)
+		local tintR, tintG, tintB, alpha = ns.Theme.Color("bubbleMine")
+		local baseR, baseG, baseB = ns.Theme.Color("panel")
+		local r = baseR + (tintR - baseR) * alpha
+		local g = baseG + (tintG - baseG) * alpha
+		local b = baseB + (tintB - baseB) * alpha
+		local textR, textG, textB = ns.Theme.Color("text")
+		assert(ContrastOf(textR, textG, textB, r, g, b) >= 4.5, preset .. " text on the player's bubble")
+	end
+end)
+
 Test("a class crest shows only for a known class", function()
 	local ns = Boot()
 	_G.CLASS_ICON_TCOORDS = { SHAMAN = { 0.25, 0.5, 0.25, 0.5 } }

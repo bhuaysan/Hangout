@@ -20,6 +20,7 @@ local MIN_NAME_CONTRAST = 4.5
 local NAME_MIX_STEP = 0.05
 local FRAME_EDGE_ALPHA = 0.40
 local CREST_RING_ALPHA = 0.75
+local MY_BUBBLE_ALPHA = 0.24
 
 local DARK_OVERLAYS = {
 	hover = { 1, 1, 1, 0.05 },
@@ -100,6 +101,7 @@ local function BuildTokens()
 	tokens.popup = { tokens.sidebar[1], tokens.sidebar[2], tokens.sidebar[3], 1 }
 	tokens.frameEdge = { tokens.accent[1], tokens.accent[2], tokens.accent[3], FRAME_EDGE_ALPHA }
 	tokens.crestRing = { tokens.accent[1], tokens.accent[2], tokens.accent[3], CREST_RING_ALPHA }
+	tokens.bubbleMine = { tokens.accent[1], tokens.accent[2], tokens.accent[3], MY_BUBBLE_ALPHA }
 	tokens.bg[4] = opacity
 	tokens.sidebar[4] = opacity
 end
