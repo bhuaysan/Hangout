@@ -755,9 +755,61 @@ end)
 local function BootForAlerts()
 	local ns = Boot()
 	local toasts = {}
-	ns.Toast.Show = function(key, conv, record) toasts[#toasts + 1] = { key = key, record = record } end
+	local function capture(key, conv, record) toasts[#toasts + 1] = { key = key, record = record } end
+	ns.Toast.Show = capture
+	ns.Glance.Show = capture
 	return ns, toasts
 end
+
+Test("a whisper goes to the glance strip instead of a popup", function()
+	local ns = Boot()
+	local popups, glances = 0, 0
+	ns.Toast.Show = function() popups = popups + 1 end
+	ns.Glance.Show = function() glances = glances + 1 end
+	Chat(ns, "CHAT_MSG_WHISPER", { text = "hi", name = "A B" })
+	Equal(glances, 1)
+	Equal(popups, 0)
+end)
+
+Test("the glance strip stays away while Hangout is open", function()
+	local ns = Boot()
+	local glances = 0
+	ns.Glance.Show = function() glances = glances + 1 end
+	ns.Window.IsVisible = function() return true end
+	Chat(ns, "CHAT_MSG_WHISPER", { text = "hi", name = "A B" })
+	Equal(glances, 0)
+end)
+
+Test("group alerts keep using popups", function()
+	local ns = Boot()
+	ns.Set("toastGroup", true)
+	local popups, glances = 0, 0
+	ns.Toast.Show = function() popups = popups + 1 end
+	ns.Glance.Show = function() glances = glances + 1 end
+	Chat(ns, "CHAT_MSG_GUILD", { text = "gz", name = "Other Person" })
+	Equal(popups, 1)
+	Equal(glances, 0)
+end)
+
+Test("the glance strip keeps the three newest whispers", function()
+	local ns = Boot()
+	for index = 1, 4 do
+		Chat(ns, "CHAT_MSG_WHISPER", { text = "message " .. index, name = "Other Person" })
+	end
+	local lines = ns.Glance.Lines()
+	Equal(#lines, 3)
+	Equal(lines[1].text, "message 2")
+	Equal(lines[3].text, "message 4")
+	Equal(lines[3].name, "Other", "only the first name, to leave room for the text")
+end)
+
+Test("hiding the glance strip forgets its lines", function()
+	local ns = Boot()
+	Chat(ns, "CHAT_MSG_WHISPER", { text = "hi", name = "Other Person" })
+	Equal(#ns.Glance.Lines(), 1)
+	ns.Glance.Hide()
+	Equal(#ns.Glance.Lines(), 0)
+end)
 
 Test("mentions match the first name and keywords as whole words", function()
 	local ns = Boot()

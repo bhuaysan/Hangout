@@ -20,6 +20,7 @@ local MIN_NAME_CONTRAST = 4.5
 local NAME_MIX_STEP = 0.05
 local FRAME_EDGE_ALPHA = 0.40
 local CREST_RING_ALPHA = 0.75
+local GLANCE_ALPHA = 0.82
 local MY_BUBBLE_ALPHA = 0.24
 local MY_BUBBLE_HOVER_ALPHA = 0.34
 local THEIR_BUBBLE_HOVER_ALPHA = 0.17
@@ -101,6 +102,7 @@ local function BuildTokens()
 	-- A solid copy of the background, for layers that cover other content.
 	tokens.panel = { tokens.bg[1], tokens.bg[2], tokens.bg[3], 1 }
 	tokens.popup = { tokens.sidebar[1], tokens.sidebar[2], tokens.sidebar[3], 1 }
+	tokens.glance = { tokens.sidebar[1], tokens.sidebar[2], tokens.sidebar[3], GLANCE_ALPHA }
 	tokens.frameEdge = { tokens.accent[1], tokens.accent[2], tokens.accent[3], FRAME_EDGE_ALPHA }
 	tokens.crestRing = { tokens.accent[1], tokens.accent[2], tokens.accent[3], CREST_RING_ALPHA }
 	tokens.bubbleMine = { tokens.accent[1], tokens.accent[2], tokens.accent[3], MY_BUBBLE_ALPHA }

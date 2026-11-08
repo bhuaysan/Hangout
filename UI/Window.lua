@@ -188,6 +188,7 @@ local function Create()
 		UpdateActive()
 	end)
 	frame:SetScript("OnShow", function()
+		ns.Glance.Hide()
 		if hiddenWithUI then
 			hiddenWithUI = false
 			ns.Sidebar.Refresh()

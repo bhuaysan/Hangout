@@ -130,6 +130,7 @@ function Alerts.Decide(key, conv, mention)
 		sound = sound,
 		toast = ns.Get("toast" .. category) and not InCombatLockdown(),
 		flash = ns.Get("flash" .. category),
+		isWhisper = category == "Whisper",
 	}
 end
 
@@ -142,6 +143,15 @@ end
 
 function Alerts.Preview(choice)
 	PlayChoice(choice)
+end
+
+-- Whispers go to the glance strip, and only while Hangout is closed.
+local function ShowPopup(key, conv, record, isWhisper)
+	if not isWhisper then
+		ns.Toast.Show(key, conv, record)
+	elseif not ns.Window.IsVisible() then
+		ns.Glance.Show(key, conv, record)
+	end
 end
 
 local function PlayThrottled(choice)
@@ -161,7 +171,7 @@ local function Alert(key, mention, record)
 
 	if decision.sound then PlayThrottled(decision.sound) end
 	if decision.flash then FlashClientIcon() end
-	if decision.toast and record then ns.Toast.Show(key, conv, record) end
+	if decision.toast and record then ShowPopup(key, conv, record, decision.isWhisper) end
 	return true
 end
 

@@ -29,6 +29,7 @@ UI\Sidebar.lua
 UI\EmojiPicker.lua
 UI\Composer.lua
 UI\Toast.lua
+UI\Glance.lua
 UI\Settings.lua
 UI\Window.lua
 UI\Launcher.lua
