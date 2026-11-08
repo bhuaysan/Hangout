@@ -1032,6 +1032,53 @@ Test("every theme's accent is readable on its own surfaces", function()
 	end
 end)
 
+Test("every emoji sits in exactly one picker tab", function()
+	local ns = Boot()
+	local seen = {}
+	for _, group in ipairs(ns.Emoji.GROUPS) do
+		assert(#group.names <= ns.EmojiPicker.CAPACITY, group.label .. " doesn't fit the grid")
+		for _, name in ipairs(group.names) do
+			assert(ns.Emoji.Has(name), name .. " isn't in the atlas")
+			assert(not seen[name], name .. " is in two tabs")
+			seen[name] = true
+		end
+	end
+	for _, name in ipairs(ns.EmojiData) do
+		assert(seen[name], name .. " is in no tab")
+	end
+end)
+
+Test("the picker opens on the game-flavored emoji", function()
+	local ns = Boot()
+	Equal(ns.Emoji.GROUPS[1].label, "Adventure")
+	Equal(ns.Emoji.GROUPS[1].names[1], "crossed_swords")
+end)
+
+Test("emoji search matches part of a name in any case", function()
+	local ns = Boot()
+	local matches = ns.Emoji.Search("SWORD")
+	Equal(#matches, 1)
+	Equal(matches[1], "crossed_swords")
+	Equal(ns.Emoji.Search("crossed sw")[1], "crossed_swords", "a space stands for an underscore")
+	Equal(#ns.Emoji.Search("nothing_like_this"), 0)
+end)
+
+Test("emoji search treats punctuation as plain text", function()
+	local ns = Boot()
+	Equal(#ns.Emoji.Search("%"), 0)
+	Equal(#ns.Emoji.Search("["), 0)
+end)
+
+Test("the window edge follows the accent color", function()
+	local ns = Boot()
+	ns.Theme.SetCustom("accent", 1, 0, 0)
+	local r, g, b, a = ns.Theme.Color("frameEdge")
+	Equal(r, 1)
+	Equal(g, 0)
+	Equal(b, 0)
+	assert(a > 0 and a < 1, "the edge stays subtle")
+end)
+
 Test("a class crest shows only for a known class", function()
 	local ns = Boot()
 	_G.CLASS_ICON_TCOORDS = { SHAMAN = { 0.25, 0.5, 0.25, 0.5 } }

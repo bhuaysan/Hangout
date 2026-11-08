@@ -23,6 +23,58 @@ end
 
 Emoji.ATLAS = ATLAS
 
+-- The picker's tabs, with the game-flavored emoji first.
+Emoji.GROUPS = {
+	{ label = "Adventure", names = {
+		"crossed_swords", "dagger", "shield", "bow", "hammer", "axe", "pick", "wrench", "bomb", "key", "lock",
+		"scroll", "book", "alembic", "test_tube", "crystal_ball", "candle", "map", "compass", "tent", "castle",
+		"moneybag", "coin", "gem", "crown", "trophy", "medal", "beer", "beers",
+		"mage", "elf", "fairy", "genie", "vampire", "zombie", "skull", "ghost", "imp", "smiling_imp",
+		"dragon", "dragon_face", "wolf", "bear", "boar", "horse", "unicorn", "owl", "eagle", "bat", "spider",
+		"snake", "fish", "turtle", "sheep", "chicken", "cat", "dog", "pig",
+		"fire", "zap", "snowflake", "droplet", "boom",
+	} },
+	{ label = "Smileys", names = {
+		"smile", "grin", "smiley", "joy", "rofl", "sweat_smile", "laughing", "wink", "blush", "yum", "sunglasses",
+		"heart_eyes", "kiss", "thinking", "neutral", "expressionless", "unamused", "roll_eyes", "smirk",
+		"persevere", "disappointed", "worried", "angry", "rage", "cry", "sob", "scream", "flushed", "dizzy_face",
+		"sleeping", "sleepy", "mask", "nerd", "clown", "cowboy", "partying", "pleading", "alien", "robot", "poop",
+	} },
+	{ label = "Hands", names = {
+		"thumbsup", "thumbsdown", "ok_hand", "wave", "clap", "pray", "muscle", "fist", "v", "metal", "call_me",
+		"point_up", "point_down", "point_left", "point_right", "raised_hand", "handshake", "crossed_fingers",
+		"eyes", "brain",
+	} },
+	{ label = "Hearts", names = {
+		"heart", "broken_heart", "orange_heart", "yellow_heart", "green_heart", "blue_heart", "purple_heart",
+		"black_heart", "sparkling_heart", "two_hearts",
+	} },
+	{ label = "Things", names = {
+		"star", "star2", "sparkles", "sunny", "moon", "cloud", "rainbow", "tada", "confetti", "balloon", "gift",
+		"bell", "mega", "speech", "zzz", "anger", "question", "exclamation", "check", "x", "warning", "no_entry",
+		"recycle", "hourglass", "wine", "cocktail", "coffee", "pizza", "burger", "meat", "croissant", "apple",
+		"cake",
+	} },
+}
+
+function Emoji.IndexOf(name)
+	return indexByName[name]
+end
+
+-- Emoji whose name contains the query, in the same order as the tabs.
+function Emoji.Search(query)
+	local needle = query:lower():gsub("%s+", "_")
+	local matches = {}
+	for _, group in ipairs(Emoji.GROUPS) do
+		for _, name in ipairs(group.names) do
+			if name:find(needle, 1, true) then
+				matches[#matches + 1] = name
+			end
+		end
+	end
+	return matches
+end
+
 local function CellBounds(index)
 	local left = (index - 1) % COLUMNS * CELL
 	local top = math.floor((index - 1) / COLUMNS) * CELL

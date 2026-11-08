@@ -18,6 +18,7 @@ Theme.MIN_OPACITY = 70
 
 local MIN_NAME_CONTRAST = 4.5
 local NAME_MIX_STEP = 0.05
+local FRAME_EDGE_ALPHA = 0.40
 
 local DARK_OVERLAYS = {
 	hover = { 1, 1, 1, 0.05 },
@@ -95,6 +96,8 @@ local function BuildTokens()
 	end
 	-- A solid copy of the background, for layers that cover other content.
 	tokens.panel = { tokens.bg[1], tokens.bg[2], tokens.bg[3], 1 }
+	tokens.popup = { tokens.sidebar[1], tokens.sidebar[2], tokens.sidebar[3], 1 }
+	tokens.frameEdge = { tokens.accent[1], tokens.accent[2], tokens.accent[3], FRAME_EDGE_ALPHA }
 	tokens.bg[4] = opacity
 	tokens.sidebar[4] = opacity
 end

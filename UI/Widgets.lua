@@ -48,6 +48,30 @@ function Widgets.Text(frame, fontObject, token)
 	return text
 end
 
+-- A one-pixel themed line along each edge of a frame.
+function Widgets.Border(frame, token)
+	local top = Widgets.Solid(frame, token, "OVERLAY")
+	top:SetPoint("TOPLEFT")
+	top:SetPoint("TOPRIGHT")
+	top:SetHeight(1)
+
+	local bottom = Widgets.Solid(frame, token, "OVERLAY")
+	bottom:SetPoint("BOTTOMLEFT")
+	bottom:SetPoint("BOTTOMRIGHT")
+	bottom:SetHeight(1)
+
+	-- The sides stop short of the corners, so overlapping lines don't look brighter.
+	local left = Widgets.Solid(frame, token, "OVERLAY")
+	left:SetPoint("TOPLEFT", 0, -1)
+	left:SetPoint("BOTTOMLEFT", 0, 1)
+	left:SetWidth(1)
+
+	local right = Widgets.Solid(frame, token, "OVERLAY")
+	right:SetPoint("TOPRIGHT", 0, -1)
+	right:SetPoint("BOTTOMRIGHT", 0, 1)
+	right:SetWidth(1)
+end
+
 -- Shows a class's round crest on a texture, or hides the texture if the class
 -- isn't known. Returns whether a crest is showing.
 function Widgets.SetClassCrest(texture, classToken)

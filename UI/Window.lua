@@ -11,6 +11,7 @@ local HEADER_HEIGHT = 40
 local COMPOSER_HEIGHT = 40
 local BANNER_HEIGHT = 24
 local RESIZE_REFRESH_DELAY = 0.1
+local EDGE_LEVEL_OFFSET = 35
 local GRIP_LEVEL_OFFSET = 40
 
 local frame, title, noteText, status, collapseLabel, header, banner, messages, sidebar, emptyHint
@@ -98,6 +99,14 @@ local function CreateResizeGrip()
 		frame:StopMovingOrSizing()
 		SaveGeometry()
 	end)
+end
+
+-- Sits above everything but the resize grip, and lets clicks through.
+local function CreateFrameEdge()
+	local edge = CreateFrame("Frame", nil, frame)
+	edge:SetAllPoints()
+	edge:SetFrameLevel(frame:GetFrameLevel() + EDGE_LEVEL_OFFSET)
+	ns.Widgets.Border(edge, "frameEdge")
 end
 
 local function Divider(parent)
@@ -226,6 +235,7 @@ local function Create()
 	emptyHint:Hide()
 
 	ns.SettingsUI.Create(frame, header)
+	CreateFrameEdge()
 	CreateResizeGrip()
 end
 
