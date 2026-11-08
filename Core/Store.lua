@@ -56,13 +56,20 @@ local function DropOldest(list, count)
 	end
 end
 
+local function ClearRequest(key, conv)
+	if not conv.req then return end
+	conv.req = nil
+	ns.Fire("REQUEST_ACCEPTED", key)
+end
+
 -- Public channels are too busy for unread counts to mean anything.
 local function CountsUnread(key)
 	return ns.CategoryOf(key) ~= "channel"
 end
 
 -- record: { t = serverTime, x = text, o = 1 if outgoing, s = sender, k = class, f = flags }
--- recovered marks a message saved after a restriction; it was already alerted.
+-- recovered marks a message saved after a restriction, which has already had
+-- any alert it could get without its text being readable.
 function Store.Add(key, meta, record, recovered)
 	local conv = Store.Ensure(key, meta)
 	local mention = record.o ~= 1 and record.s ~= nil and ns.Alerts.IsMention(record.x)
@@ -82,7 +89,7 @@ function Store.Add(key, meta, record, recovered)
 
 	-- Replying to someone accepts their message request.
 	if record.o == 1 then
-		conv.req = nil
+		ClearRequest(key, conv)
 		conv.stranger = nil
 	end
 
@@ -184,21 +191,14 @@ function Store.MarkRead(key)
 	ns.Fire("CONV_READ", key)
 end
 
-function Store.SetPinned(key, pinned)
+function Store.AcceptRequest(key)
 	local conv = Store.Get(key)
 	if not conv then return end
-	conv.pin = pinned or nil
+	ClearRequest(key, conv)
 	ns.Fire("CONV_CHANGED")
 end
 
-function Store.SetMuted(key, muted)
-	local conv = Store.Get(key)
-	if not conv then return end
-	conv.mute = muted or nil
-	ns.Fire("CONV_CHANGED")
-end
-
--- Sets nick, note or req. An empty value clears the field.
+-- Sets nick, note, pin or mute. An empty value or nil clears the field.
 function Store.SetField(key, field, value)
 	local conv = Store.Get(key)
 	if not conv then return end
@@ -218,6 +218,14 @@ end
 -- The name to show for a conversation.
 function Store.LabelFor(key, conv)
 	return conv.nick or ns.Util.DisplayName(conv.name or key)
+end
+
+-- The player's other character that sent this outgoing message, or nil if it
+-- was the character they're on now.
+function Store.AltName(message)
+	local name = message.c and ns.db.chars[message.c]
+	if name and name ~= ns.me then return ns.Util.DisplayName(name) end
+	return nil
 end
 
 -- The name to show for someone speaking in group chat or a channel.

@@ -164,16 +164,34 @@ local function SendReadSoon(key)
 	readSenders[key]()
 end
 
--- Finds the newest recent message with this hash. onlyOwn limits it to ours.
-local function FindMessage(conv, ref, onlyOwn)
+-- Finds a recent message with this hash, skipping newer ones with the same
+-- text when occurrence is given. onlyOwn limits it to ours. If the two chats
+-- differ and there are too few matches, the oldest match is the best guess.
+local function FindMessage(conv, ref, onlyOwn, occurrence)
+	local remaining = occurrence or 0
+	local found
 	local oldest = math.max(1, #conv.m - MESSAGE_SEARCH_DEPTH + 1)
 	for position = #conv.m, oldest, -1 do
 		local message = conv.m[position]
 		if (not onlyOwn or message.o == 1) and Protocol.Hash(message.x) == ref then
-			return message
+			found = message
+			if remaining == 0 then return found end
+			remaining = remaining - 1
 		end
 	end
-	return nil
+	return found
+end
+
+-- How many newer recent messages have the same text as this one.
+local function OccurrenceOf(conv, target, ref)
+	local newer = 0
+	local oldest = math.max(1, #conv.m - MESSAGE_SEARCH_DEPTH + 1)
+	for position = #conv.m, oldest, -1 do
+		local message = conv.m[position]
+		if message == target then return newer end
+		if Protocol.Hash(message.x) == ref then newer = newer + 1 end
+	end
+	return newer
 end
 
 local function FindById(conv, id)
@@ -230,7 +248,9 @@ function Protocol.ToggleReaction(key, messageId, emoji)
 	if not message then return end
 
 	local enable = not HasReaction(message, emoji, REACTION_MINE)
-	if not Transmit(key, enable and "A" or "X", Protocol.Hash(message.x), emoji) then
+	local ref = Protocol.Hash(message.x)
+	local occurrence = OccurrenceOf(conv, message, ref)
+	if not Transmit(key, enable and "A" or "X", ref, emoji, occurrence > 0 and occurrence or nil) then
 		ns.Print("That reaction can't be sent right now.")
 		return
 	end
@@ -252,9 +272,9 @@ local function OnRead(key, conv, ref)
 	end
 end
 
-local function OnReaction(key, conv, ref, emoji, enabled)
+local function OnReaction(key, conv, ref, emoji, enabled, occurrence)
 	if not ref or not emoji or not ns.Emoji.Has(emoji) then return end
-	local message = FindMessage(conv, ref, false)
+	local message = FindMessage(conv, ref, false, occurrence)
 	if message then
 		SetReaction(message, emoji, REACTION_THEIRS, enabled)
 		ns.Fire("MESSAGES_CHANGED", key)
@@ -282,7 +302,7 @@ local function HandlePayload(key, text)
 	elseif kind == "R" then
 		OnRead(key, conv, parts[3])
 	elseif kind == "A" or kind == "X" then
-		OnReaction(key, conv, parts[3], parts[4], kind == "A")
+		OnReaction(key, conv, parts[3], parts[4], kind == "A", tonumber(parts[5]))
 	end
 end
 
@@ -318,6 +338,9 @@ ns.On("MESSAGE_ADDED", function(key, record)
 end)
 
 ns.On("CONV_READ", SendReadSoon)
+
+-- A Request stays silent until it's accepted, so this is the first hello.
+ns.On("REQUEST_ACCEPTED", Protocol.OnOpened)
 
 ns.On("LOCKDOWN_CHANGED", function(active)
 	if not active and ns.activeKey then SendReadSoon(ns.activeKey) end

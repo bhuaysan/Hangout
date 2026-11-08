@@ -66,6 +66,7 @@ function Search.Run(query, onResults)
 	generation = generation + 1
 	local mine = generation
 	local state = Search.NewState(query, ns.Store.List())
+	local reportedCount = -1
 
 	local function step()
 		if mine ~= generation then return end
@@ -73,7 +74,11 @@ function Search.Run(query, onResults)
 		local finished = Search.Advance(state, function()
 			return debugprofilestop() - started >= FRAME_BUDGET_MS
 		end)
-		onResults(state.results)
+		-- Showing results costs time outside the frame budget, so only do it for news.
+		if finished or #state.results ~= reportedCount then
+			reportedCount = #state.results
+			onResults(state.results)
+		end
 		if not finished then
 			C_Timer.After(0, step)
 		end

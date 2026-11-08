@@ -13,9 +13,9 @@ local BANNER_HEIGHT = 24
 local RESIZE_REFRESH_DELAY = 0.1
 
 local frame, title, noteText, status, collapseLabel, header, banner, messages, sidebar
-local selectedKey
 local faded = false
 local hiddenForCombat = false
+local hiddenWithUI = false
 local mouseState = {}
 
 local refreshAfterResize = ns.Util.Debounced(RESIZE_REFRESH_DELAY, function()
@@ -24,6 +24,16 @@ end)
 
 function Window.IsFaded()
 	return faded
+end
+
+function Window.IsVisible()
+	return frame ~= nil and frame:IsVisible()
+end
+
+-- The one place the selected chat changes. Everything showing it listens for this.
+local function SetSelection(key, firstUnreadAfterId, unreadCount)
+	ns.selectedKey = key
+	ns.Fire("SELECTION_CHANGED", key, firstUnreadAfterId, unreadCount)
 end
 
 local function SaveGeometry()
@@ -51,7 +61,7 @@ end
 
 -- Messages only count as read while the window is really being looked at.
 local function UpdateActive()
-	local viewing = frame and frame:IsShown() and not faded and selectedKey or nil
+	local viewing = frame and frame:IsVisible() and not faded and ns.selectedKey or nil
 	ns.activeKey = viewing
 	if viewing then
 		ns.Store.MarkRead(viewing)
@@ -159,7 +169,18 @@ local function Create()
 		SaveGeometry()
 	end)
 	frame:SetScript("OnSizeChanged", refreshAfterResize)
-	frame:SetScript("OnHide", UpdateActive)
+	frame:SetScript("OnHide", function()
+		-- Hidden but still "shown" means the whole UI went away, as with Alt-Z.
+		hiddenWithUI = frame:IsShown()
+		UpdateActive()
+	end)
+	frame:SetScript("OnShow", function()
+		if hiddenWithUI then
+			hiddenWithUI = false
+			ns.Sidebar.Refresh()
+			if ns.selectedKey then Window.Select(ns.selectedKey) end
+		end
+	end)
 	frame:Hide()
 	tinsert(UISpecialFrames, "HangoutWindow")
 
@@ -207,8 +228,8 @@ end
 
 local function UpdateStatus()
 	if not frame then return end
-	local presence = selectedKey and ns.Identity.Presence(selectedKey)
-	if selectedKey and ns.Protocol.IsTyping(selectedKey) then
+	local presence = ns.selectedKey and ns.Identity.Presence(ns.selectedKey)
+	if ns.selectedKey and ns.Protocol.IsTyping(ns.selectedKey) then
 		status:SetText("typing...")
 	elseif presence == nil then
 		status:SetText("")
@@ -217,17 +238,9 @@ local function UpdateStatus()
 	end
 end
 
--- The name on top, with the chat's note under it when there is one.
-local function UpdateTitle()
-	if not frame then return end
-	local conv = selectedKey and ns.Store.Get(selectedKey)
-	if not conv then return end
-
-	title:SetText(ns.Store.LabelFor(selectedKey, conv))
-	noteText:SetShown(conv.note ~= nil)
-	noteText:SetText(conv.note or "")
+local function AnchorTitle(hasNote)
 	title:ClearAllPoints()
-	if conv.note then
+	if hasNote then
 		title:SetPoint("TOPLEFT", 34, -6)
 		title:SetPoint("TOPRIGHT", -170, -6)
 	else
@@ -236,39 +249,47 @@ local function UpdateTitle()
 	end
 end
 
+-- The name on top, with the chat's note under it when there is one.
+local function UpdateTitle()
+	if not frame then return end
+	local conv = ns.selectedKey and ns.Store.Get(ns.selectedKey)
+	if not conv then return end
+
+	title:SetText(ns.Store.LabelFor(ns.selectedKey, conv))
+	noteText:SetShown(conv.note ~= nil)
+	noteText:SetText(conv.note or "")
+	AnchorTitle(conv.note ~= nil)
+end
+
 function Window.Select(key)
-	selectedKey = key
 	ns.SettingsUI.Hide()
 	ns.EmojiPicker.Hide()
 	local conv = ns.Store.Get(key)
 	local unreadCount = conv and conv.unread or 0
 	local unreadAfterId = unreadCount > 0 and (conv.readId or 0) or nil
+	SetSelection(key, unreadAfterId, unreadCount)
 	UpdateTitle()
 	UpdateStatus()
-	ns.Sidebar.SetSelected(key)
-	ns.MessageList.Show(key, unreadAfterId, unreadCount)
-	ns.Composer.SetConversation(key)
 	UpdateActive()
 	ns.Protocol.OnOpened(key)
 end
 
 local function SelectNewest()
 	local list = ns.Store.List()
-	if list[1] then
-		Window.Select(list[1].key)
-	else
-		selectedKey = nil
-		title:ClearAllPoints()
-		title:SetPoint("LEFT", 34, 0)
-		title:SetPoint("RIGHT", -170, 0)
-		title:SetText("No conversations yet")
-		noteText:Hide()
-		ns.Sidebar.SetSelected(nil)
-		ns.MessageList.Clear()
-		ns.Composer.SetConversation(nil)
-		UpdateStatus()
-		UpdateActive()
+	-- A stranger's Request is only opened on purpose, because opening marks it read.
+	for _, entry in ipairs(list) do
+		if not entry.conv.req then
+			Window.Select(entry.key)
+			return
+		end
 	end
+
+	SetSelection(nil)
+	AnchorTitle(false)
+	title:SetText(#list > 0 and "Select a conversation" or "No conversations yet")
+	noteText:Hide()
+	UpdateStatus()
+	UpdateActive()
 end
 
 -- Combat ---------------------------------------------------------------------
@@ -307,8 +328,8 @@ local function Unfade()
 	faded = false
 	frame:SetAlpha(1)
 	RestoreMouse()
-	if frame:IsShown() and selectedKey then
-		Window.Select(selectedKey)
+	if frame:IsShown() and ns.selectedKey then
+		Window.Select(ns.selectedKey)
 	else
 		UpdateActive()
 	end
@@ -330,12 +351,15 @@ local function OnEnterCombat()
 	end
 end
 
-local function ShowWindow()
+-- Shows the window on key, or on the current selection if key is nil.
+local function ShowWindow(key)
+	hiddenForCombat = false
 	frame:Show()
 	UpdateRestriction()
 	ns.Sidebar.Refresh()
-	if selectedKey then
-		Window.Select(selectedKey)
+	key = key or ns.selectedKey
+	if key then
+		Window.Select(key)
 	else
 		SelectNewest()
 	end
@@ -371,15 +395,14 @@ function Window.Open(key)
 	if frame:IsShown() then
 		Window.Select(key)
 	else
-		selectedKey = key
-		ShowWindow()
+		ShowWindow(key)
 	end
 end
 
 -- Opens a chat at one message, used by search results.
 function Window.JumpTo(key, messageId)
 	Window.Select(key)
-	ns.MessageList.ShowAt(key, messageId)
+	ns.MessageList.ShowAt(messageId)
 end
 
 function Window.OpenSettings()
@@ -400,7 +423,9 @@ end
 
 -- The first message of a session gives an open, empty window something to show.
 local function SelectIfEmpty(key)
-	if frame and frame:IsShown() and not selectedKey then
+	if not frame or not frame:IsShown() or ns.selectedKey then return end
+	local conv = ns.Store.Get(key)
+	if conv and not conv.req then
 		Window.Select(key)
 	end
 end
@@ -413,7 +438,7 @@ ns.On("TYPING_CHANGED", UpdateStatus)
 -- The selected chat can disappear: deleted, blocked, or a temporary
 -- "During restriction" chat whose messages have been saved.
 local function SelectNewestIfGone()
-	if frame and selectedKey and not ns.Store.Get(selectedKey) then
+	if frame and ns.selectedKey and not ns.Store.Get(ns.selectedKey) then
 		SelectNewest()
 	end
 end

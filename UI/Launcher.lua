@@ -6,7 +6,6 @@ ns.Launcher = Launcher
 local PREVIEW_LINES = 10
 local MINIMAP_RADIUS_OFFSET = 5
 local BADGE_DELAY = 0.1
-local MAX_BADGE = 99
 local ICON = "Interface\\AddOns\\Hangout\\Media\\icon.png"
 
 local button, badge, icon
@@ -34,7 +33,7 @@ local function UpdateBadge()
 	local total = ns.Store.TotalUnread()
 	badge:SetShown(total > 0)
 	if total > 0 then
-		badge:SetText(total > MAX_BADGE and (MAX_BADGE .. "+") or total)
+		badge:SetText(ns.Util.BadgeText(total))
 	end
 end
 
@@ -158,7 +157,7 @@ local function PrintConversation(index)
 	ns.Print(entry.conv.name or entry.key)
 	for i = math.max(1, #messages - PREVIEW_LINES + 1), #messages do
 		local message = messages[i]
-		local who = message.o == 1 and "You" or (message.s or entry.conv.name or "?")
+		local who = message.o == 1 and (ns.Store.AltName(message) or "You") or (message.s or entry.conv.name or "?")
 		print(date("%m-%d %H:%M", message.t) .. " " .. who .. ": " .. message.x)
 	end
 end

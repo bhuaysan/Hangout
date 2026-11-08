@@ -11,7 +11,6 @@ local SEARCH_HEIGHT = 34
 local REFRESH_DELAY = 0.05
 local SEARCH_DELAY = 0.25
 local MIN_SEARCH_LENGTH = 2
-local MAX_BADGE = 99
 
 local SECTIONS = {
 	{ label = "WHISPERS", prefixes = "WBL" },
@@ -25,7 +24,6 @@ local STATUS_ICON = {
 }
 
 local scrollBox, searchHolder, searchBox, searchPlaceholder
-local selectedKey
 local collapsed = false
 local searchResults = {}
 
@@ -141,10 +139,10 @@ end
 
 local function AddPersistentItems(root, key, conv)
 	root:CreateButton(conv.pin and "Unpin" or "Pin", function()
-		ns.Store.SetPinned(key, not conv.pin)
+		ns.Store.SetField(key, "pin", not conv.pin or nil)
 	end)
 	root:CreateButton(conv.mute and "Unmute" or "Mute", function()
-		ns.Store.SetMuted(key, not conv.mute)
+		ns.Store.SetField(key, "mute", not conv.mute or nil)
 	end)
 end
 
@@ -163,7 +161,7 @@ local function ShowRowMenu(owner, key)
 		local persistent = ns.Store.IsPersistent(key)
 
 		if conv.req then
-			root:CreateButton("Accept", function() ns.Store.SetField(key, "req", nil) end)
+			root:CreateButton("Accept", function() ns.Store.AcceptRequest(key) end)
 		end
 		if persistent then
 			AddPersistentItems(root, key, conv)
@@ -274,7 +272,7 @@ local function InitRow(frame, element)
 	local isRow = element.kind == "row"
 	local isResult = element.kind == "result"
 	frame:EnableMouse((isRow or isResult) and not ns.Window.IsFaded())
-	frame.selected:SetShown(isRow and element.key == selectedKey)
+	frame.selected:SetShown(isRow and element.key == ns.selectedKey)
 	frame.hover:Hide()
 	LayoutText(frame, element)
 
@@ -298,7 +296,7 @@ local function InitRow(frame, element)
 	local unread = isRow and element.unread or 0
 	frame.badge:SetShown(unread > 0)
 	if unread > 0 then
-		frame.badge:SetText(unread > MAX_BADGE and (MAX_BADGE .. "+") or unread)
+		frame.badge:SetText(ns.Util.BadgeText(unread))
 	end
 end
 
@@ -372,11 +370,6 @@ function Sidebar.Create(parent)
 	scrollBox:SetPoint("BOTTOMRIGHT", -12, 0)
 end
 
-function Sidebar.SetSelected(key)
-	selectedKey = key
-	Sidebar.Refresh()
-end
-
 function Sidebar.SetCollapsed(isCollapsed)
 	collapsed = isCollapsed
 	searchHolder:SetShown(not collapsed)
@@ -389,7 +382,12 @@ function Sidebar.ClearSearchFocus()
 	if searchBox then searchBox:ClearFocus() end
 end
 
-local refreshSoon = ns.Util.Debounced(REFRESH_DELAY, Sidebar.Refresh)
+-- Opening the window refreshes the sidebar, so a closed one can skip this.
+local refreshSoon = ns.Util.Debounced(REFRESH_DELAY, function()
+	if ns.Window.IsVisible() then Sidebar.Refresh() end
+end)
+
+ns.On("SELECTION_CHANGED", function() Sidebar.Refresh() end)
 
 for _, message in ipairs({ "MESSAGE_ADDED", "LOCKED_ADDED", "LIVE_CHANGED", "CONV_CHANGED", "THEME_CHANGED" }) do
 	ns.On(message, refreshSoon)

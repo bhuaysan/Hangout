@@ -15,20 +15,23 @@ local FALLBACK_LINE_HEIGHT = 15
 local CONTEXT_ROWS = 20
 
 local scrollBox, measure
-local currentKey
 local visibleLimit = PAGE_SIZE
 local unreadAfterId
 local highlightId
 local shownElements = {}
 
 local function SenderOf(message, conv)
-	if message.o == 1 then return "You" end
+	if message.o == 1 then return ns.Store.AltName(message) or "You" end
 	if message.s then return ns.Store.SenderLabel(message.s) end
 	return conv.nick or ns.Util.DisplayName(conv.name or "?")
 end
 
 local function ClassOf(message, conv)
-	if message.o == 1 then return ns.myClass end
+	if message.o == 1 then
+		-- An alt's class isn't saved, so it gets the plain text color.
+		if ns.Store.AltName(message) then return nil end
+		return ns.myClass
+	end
 	if message.s then return message.k end
 	return conv.class
 end
@@ -146,9 +149,9 @@ local function ShowReactionMenu(owner, messageId)
 	MenuUtil.CreateContextMenu(owner, function(_, root)
 		root:CreateTitle("React")
 		for _, emoji in ipairs(ns.Protocol.QUICK_REACTIONS) do
-			local active = ns.Protocol.HasMyReaction(currentKey, messageId, emoji)
+			local active = ns.Protocol.HasMyReaction(ns.selectedKey, messageId, emoji)
 			root:CreateButton(ns.Emoji.Tag(emoji) .. (active and "  Remove" or "  " .. emoji), function()
-				ns.Protocol.ToggleReaction(currentKey, messageId, emoji)
+				ns.Protocol.ToggleReaction(ns.selectedKey, messageId, emoji)
 			end)
 		end
 	end)
@@ -160,7 +163,7 @@ local function OnRowMouseUp(self, button)
 	if element.kind == "older" and button == "LeftButton" then
 		visibleLimit = visibleLimit + PAGE_SIZE
 		MessageList.Refresh()
-	elseif element.kind == "message" and button == "RightButton" and ns.Protocol.CanReact(currentKey) then
+	elseif element.kind == "message" and button == "RightButton" and ns.Protocol.CanReact(ns.selectedKey) then
 		ShowReactionMenu(self, element.id)
 	end
 end
@@ -293,11 +296,11 @@ end
 
 -- Rebuilds the rows, following new messages only if already at the bottom.
 function MessageList.Refresh(jumpToEnd)
-	if not scrollBox or not currentKey then return end
+	if not scrollBox or not ns.selectedKey then return end
 
 	local follow = jumpToEnd or scrollBox:IsAtEnd() or not scrollBox:HasScrollableExtent()
-	local conv = ns.Store.Get(currentKey)
-	local live = ns.Store.GetLive(currentKey)
+	local conv = ns.Store.Get(ns.selectedKey)
+	local live = ns.Store.GetLive(ns.selectedKey)
 	shownElements = conv and MessageList.BuildElements(conv, visibleLimit, live, unreadAfterId) or {}
 	scrollBox:SetDataProvider(CreateDataProvider(shownElements), ScrollBoxConstants.RetainScrollPosition)
 	if follow then
@@ -306,8 +309,7 @@ function MessageList.Refresh(jumpToEnd)
 end
 
 -- Empties the list when no conversation is left to show.
-function MessageList.Clear()
-	currentKey = nil
+local function Clear()
 	unreadAfterId = nil
 	highlightId = nil
 	shownElements = {}
@@ -326,8 +328,7 @@ local function ScrollToFirst(matches, alignment)
 end
 
 -- Opens a chat at its first unread message, or at the end if there is none.
-function MessageList.Show(key, firstUnreadAfterId, unreadCount)
-	currentKey = key
+local function Show(firstUnreadAfterId, unreadCount)
 	unreadAfterId = firstUnreadAfterId
 	highlightId = nil
 	visibleLimit = math.max(PAGE_SIZE, (unreadCount or 0) + CONTEXT_ROWS)
@@ -337,13 +338,12 @@ function MessageList.Show(key, firstUnreadAfterId, unreadCount)
 	end
 end
 
--- Opens a chat centered on one message, for search results.
-function MessageList.ShowAt(key, messageId)
-	currentKey = key
+-- Centers the selected chat on one message, for search results.
+function MessageList.ShowAt(messageId)
 	unreadAfterId = nil
 	highlightId = messageId
 
-	local conv = ns.Store.Get(key)
+	local conv = ns.Store.Get(ns.selectedKey)
 	local messages = conv and conv.m or {}
 	for position = #messages, 1, -1 do
 		if messages[position].i == messageId then
@@ -356,11 +356,21 @@ function MessageList.ShowAt(key, messageId)
 	ScrollToFirst(function(element) return element.id == messageId end, ScrollBoxConstants.AlignCenter)
 end
 
-local function RefreshIfCurrent(key)
-	if key == currentKey then
+-- Opening the window rebuilds the list, and so does the end of a recovery, so
+-- neither a closed window nor a recovered message needs a rebuild of its own.
+local function RefreshIfCurrent(key, _, _, recovered)
+	if key == ns.selectedKey and not recovered and ns.Window.IsVisible() then
 		MessageList.Refresh()
 	end
 end
+
+ns.On("SELECTION_CHANGED", function(key, firstUnreadAfterId, unreadCount)
+	if key then
+		Show(firstUnreadAfterId, unreadCount)
+	else
+		Clear()
+	end
+end)
 
 ns.On("MESSAGE_ADDED", RefreshIfCurrent)
 ns.On("LOCKED_ADDED", RefreshIfCurrent)

@@ -17,10 +17,11 @@ local CHAT_TYPE_BY_PREFIX = {
 }
 
 -- Returns the last byte of the unbreakable unit at position: a whole
--- hyperlink, or one UTF-8 character.
+-- hyperlink, an escaped pipe, or one UTF-8 character.
 local function UnitEnd(text, position)
 	local byte = text:byte(position)
 	if byte == PIPE then
+		if text:byte(position + 1) == PIPE then return position + 1 end -- an escaped pipe
 		local _, linkEnd = text:find("^|c[^|]*|H.-|h.-|h|r", position)
 		if not linkEnd then
 			_, linkEnd = text:find("^|H.-|h.-|h", position)

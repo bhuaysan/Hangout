@@ -27,6 +27,7 @@ for _, choice in ipairs(CHOICES) do
 end
 
 local lastSoundAt = 0
+local recoveryAlerted = false
 local needles
 
 function Alerts.SoundChoices(category)
@@ -151,27 +152,34 @@ local function PlayThrottled(choice)
 	PlayChoice(choice)
 end
 
-local function OnMessage(key, record, mention, recovered)
-	if recovered or record.o == 1 then return end
+-- Plays whatever this message should do. A popup needs a readable record.
+-- Returns true if the message was allowed to alert.
+local function Alert(key, mention, record)
 	local conv = ns.Store.Get(key)
 	local decision = conv and Alerts.Decide(key, conv, mention)
-	if not decision then return end
+	if not decision then return false end
 
 	if decision.sound then PlayThrottled(decision.sound) end
 	if decision.flash then FlashClientIcon() end
-	if decision.toast then ns.Toast.Show(key, conv, record) end
+	if decision.toast and record then ns.Toast.Show(key, conv, record) end
+	return true
+end
+
+local function OnMessage(key, record, mention, recovered)
+	if record.o == 1 then return end
+	-- Recovered lines already alerted while locked, but a locked line can't be
+	-- recognized as a mention. Those get one alert per recovery.
+	if recovered and (not mention or recoveryAlerted) then return end
+	if Alert(key, mention, record) and recovered then
+		recoveryAlerted = true
+	end
 end
 
 -- Locked messages can't be read, so they get no toast and can't be mentions.
 local function OnLocked(key, element)
-	if element.o == 1 then return end
-	local conv = ns.Store.Get(key)
-	local decision = conv and Alerts.Decide(key, conv, false)
-	if not decision then return end
-
-	if decision.sound then PlayThrottled(decision.sound) end
-	if decision.flash then FlashClientIcon() end
+	if element.o ~= 1 then Alert(key, false) end
 end
 
 ns.On("MESSAGE_ADDED", OnMessage)
 ns.On("LOCKED_ADDED", OnLocked)
+ns.On("LIVE_CHANGED", function() recoveryAlerted = false end)

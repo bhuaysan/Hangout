@@ -3,6 +3,8 @@ local _, ns = ...
 local Util = {}
 ns.Util = Util
 
+local MAX_BADGE = 99
+
 -- Forever characters are "First Last" and realms are hidden. Chat events use
 -- that form, but whisper targets and links can also use "First-Last".
 -- Callers must only pass values that passed canaccessvalue.
@@ -31,6 +33,11 @@ function Util.ParseList(text)
 		if entry ~= "" then list[#list + 1] = entry end
 	end
 	return list
+end
+
+-- The text for an unread badge.
+function Util.BadgeText(count)
+	return count > MAX_BADGE and (MAX_BADGE .. "+") or tostring(count)
 end
 
 -- Returns the first UTF-8 character of text.

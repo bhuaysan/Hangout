@@ -29,7 +29,7 @@ end
 local function ScanBattleNet()
 	for index = 1, BNGetNumFriends() do
 		local info = C_BattleNet.GetFriendAccountInfo(index)
-		if info and info.battleTag and canaccessvalue(info.battleTag) then
+		if info and canaccessvalue(info.battleTag) and info.battleTag then
 			accountIdByTag[info.battleTag] = info.bnetAccountID
 			local game = info.gameAccountInfo
 			if game and canaccessvalue(game.isOnline) then
@@ -43,8 +43,9 @@ end
 local function ScanGuild()
 	for index = 1, GetNumGuildMembers() do
 		local name, _, _, _, _, _, _, _, isOnline = GetGuildRosterInfo(index)
-		if name and canaccessvalue(name) and canaccessvalue(isOnline) then
-			onlineByName[ns.Util.NormalizeName(name)] = isOnline and true or false
+		if canaccessvalue(name) and canaccessvalue(isOnline) then
+			local normalized = ns.Util.NormalizeName(name)
+			if normalized then onlineByName[normalized] = isOnline and true or false end
 		end
 	end
 end
@@ -53,7 +54,8 @@ local function ScanFriends()
 	for index = 1, C_FriendList.GetNumFriends() do
 		local info = C_FriendList.GetFriendInfoByIndex(index)
 		if info and canaccessvalue(info.name) and canaccessvalue(info.connected) then
-			onlineByName[ns.Util.NormalizeName(info.name)] = info.connected
+			local normalized = ns.Util.NormalizeName(info.name)
+			if normalized then onlineByName[normalized] = info.connected end
 		end
 	end
 end
@@ -122,7 +124,7 @@ end
 function Identity.BattleTag(bnetAccountID)
 	local info = C_BattleNet.GetAccountInfoByID(bnetAccountID)
 	local tag = info and info.battleTag
-	if not tag or tag == "" or not canaccessvalue(tag) then
+	if not canaccessvalue(tag) or not tag or tag == "" then
 		return nil
 	end
 	accountIdByTag[tag] = bnetAccountID
@@ -140,7 +142,7 @@ end
 function Identity.ClassFromGUID(guid)
 	if not guid or guid == "" then return nil end
 	local _, classToken = GetPlayerInfoByGUID(guid)
-	if classToken and canaccessvalue(classToken) then
+	if canaccessvalue(classToken) and classToken then
 		return classToken
 	end
 	return nil
@@ -150,7 +152,7 @@ end
 -- Before guild data arrives this returns a memory-only key.
 function Identity.GuildKey(prefix)
 	local guildName = GetGuildInfo("player")
-	if guildName and canaccessvalue(guildName) then
+	if canaccessvalue(guildName) and guildName then
 		return prefix .. ":" .. guildName .. "-" .. GetNormalizedRealmName()
 	end
 	return prefix .. ":?"

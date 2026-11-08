@@ -49,8 +49,25 @@ end
 
 Emoji.Tag = InlineTag
 
+-- gsub can't be used here: when ":30:" in "10:30:smile:" isn't an emoji, its
+-- closing colon has to stay available to open the next shortcode.
 local function RenderPlain(text)
-	return (text:gsub(":([%w_+%-]+):", InlineTag))
+	local output = {}
+	local position = 1
+	while true do
+		local first, last, name = text:find(":([%w_+%-]+):", position)
+		if not first then break end
+		local tag = InlineTag(name)
+		if tag then
+			output[#output + 1] = text:sub(position, first - 1) .. tag
+			position = last + 1
+		else
+			output[#output + 1] = text:sub(position, last - 1)
+			position = last
+		end
+	end
+	output[#output + 1] = text:sub(position)
+	return table.concat(output)
 end
 
 -- Replaces :shortcodes: with emoji for display. Hyperlinks are left alone,

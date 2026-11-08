@@ -13,7 +13,6 @@ local REASON_TEXT = {
 }
 
 local box, placeholder
-local currentKey
 
 local function UpdatePlaceholder()
 	placeholder:SetShown(box:GetText() == "" and not box:HasFocus())
@@ -21,19 +20,19 @@ end
 
 local function OnTextChanged(_, userInput)
 	UpdatePlaceholder()
-	local conv = currentKey and ns.Store.Get(currentKey)
+	local conv = ns.selectedKey and ns.Store.Get(ns.selectedKey)
 	if not conv then return end
 
 	local text = box:GetText()
 	conv.draft = text ~= "" and text or nil
 	if userInput and text ~= "" and text:sub(1, 1) ~= "/" then
-		ns.Protocol.NotifyTyping(currentKey)
+		ns.Protocol.NotifyTyping(ns.selectedKey)
 	end
 end
 
 local function OnEnterPressed(self)
-	if not currentKey then return end
-	local ok, reason = ns.Send.Text(currentKey, self:GetText())
+	if not ns.selectedKey then return end
+	local ok, reason = ns.Send.Text(ns.selectedKey, self:GetText())
 	if ok then
 		self:SetText("")
 	elseif reason == "empty" then
@@ -78,7 +77,7 @@ function Composer.Create(parent)
 	placeholder:SetText("Message...")
 
 	hooksecurefunc(ChatFrameUtil, "InsertLink", function(link)
-		if link and canaccessvalue(link) and box:HasFocus() then
+		if canaccessvalue(link) and link and box:HasFocus() then
 			box:Insert(link)
 		end
 	end)
@@ -88,18 +87,11 @@ local function UpdateHint()
 	if not placeholder then return end
 	if ns.Lockdown.IsActive() then
 		placeholder:SetText("Restricted right now. Use normal chat to reply.")
-	elseif currentKey == ns.Capture.LOCKED_KEY then
+	elseif ns.selectedKey == ns.Capture.LOCKED_KEY then
 		placeholder:SetText("Use normal chat to reply to these messages.")
 	else
 		placeholder:SetText("Message...")
 	end
-end
-
-function Composer.SetConversation(key)
-	currentKey = key
-	UpdateHint()
-	local conv = key and ns.Store.Get(key)
-	box:SetText(conv and conv.draft or "")
 end
 
 function Composer.ClearFocus()
@@ -116,3 +108,9 @@ ns.On("THEME_CHANGED", function()
 end)
 
 ns.On("LOCKDOWN_CHANGED", UpdateHint)
+
+ns.On("SELECTION_CHANGED", function(key)
+	UpdateHint()
+	local conv = key and ns.Store.Get(key)
+	box:SetText(conv and conv.draft or "")
+end)

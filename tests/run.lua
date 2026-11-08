@@ -824,7 +824,7 @@ Test("muted chats only alert on a mention and leave the total alone", function()
 	local ns, toasts = BootForAlerts()
 	Chat(ns, "CHAT_MSG_GUILD", { text = "first", name = "A B" })
 	local key = "G:Horde Heroes-Thunderstrike"
-	ns.Store.SetMuted(key, true)
+	ns.Store.SetField(key, "mute", true)
 	Equal(ns.Store.TotalUnread(), 0)
 	Chat(ns, "CHAT_MSG_GUILD", { text = "gz", name = "A B" })
 	Equal(#toasts, 0)
@@ -1577,12 +1577,12 @@ local function BootWithWindow()
 	ns.Sidebar = {
 		Create = function() end, SetCollapsed = function() end, Refresh = function() end,
 		ClearSearchFocus = function() end,
-		SetSelected = function(key) calls.selected = key end,
 	}
-	ns.MessageList = {
-		Create = function() end, Refresh = function() end, Show = function() end,
-		Clear = function() calls.cleared = calls.cleared + 1 end,
-	}
+	ns.MessageList = { Create = function() end, Refresh = function() end }
+	ns.On("SELECTION_CHANGED", function(key)
+		calls.selected = key
+		if not key then calls.cleared = calls.cleared + 1 end
+	end)
 	ns.SettingsUI = { Create = function() end, Hide = function() end }
 	ns.EmojiPicker = { Hide = function() end }
 	return ns, calls
@@ -1656,7 +1656,7 @@ Test("an accepted request is no longer screened", function()
 	stubs.allStrangers = true
 	ns.Filter.SetList("blockWords", "gold")
 	Chat(ns, "CHAT_MSG_WHISPER", { text = "hi", name = "New Person" })
-	ns.Store.SetField("W:New Person", "req", nil)
+	ns.Store.AcceptRequest("W:New Person")
 	Chat(ns, "CHAT_MSG_WHISPER", { text = "the gold run", name = "New Person" })
 	Equal(#ns.db.conv["W:New Person"].m, 2)
 end)
@@ -1733,6 +1733,342 @@ Test("restricted rows never catch the mouse", function()
 	}
 	initializer(row, { time = "12:00", sender = "A", text = "B" })
 	Equal(mouse, false)
+end)
+
+-- The window's frame, made to remember whether it's shown.
+local function TrackMainFrame(shown)
+	local main
+	for _, frame in ipairs(stubs.frames) do
+		if rawget(frame, "OnHide") then main = frame end
+	end
+	local state = { shown = shown }
+	rawset(main, "IsShown", function() return state.shown end)
+	rawset(main, "IsVisible", function() return state.shown end)
+	rawset(main, "Show", function()
+		state.shown = true
+		main.OnShow(main)
+	end)
+	rawset(main, "Hide", function()
+		state.shown = false
+		main.OnHide(main)
+	end)
+	return main, state
+end
+
+local function FireCombat(event)
+	for _, frame in ipairs(stubs.frames) do
+		if frame.events.PLAYER_REGEN_DISABLED then frame.OnEvent(frame, event) end
+	end
+end
+
+Test("closing the window during combat keeps it closed afterwards", function()
+	local ns = BootWithWindow()
+	ns.Set("combatMode", "hide")
+	Chat(ns, "CHAT_MSG_WHISPER", { text = "hi", name = "A B" })
+	ns.Window.Open("W:A B")
+	local _, state = TrackMainFrame(true)
+
+	FireCombat("PLAYER_REGEN_DISABLED")
+	Equal(state.shown, false)
+	ns.Window.Toggle()
+	ns.Window.Toggle()
+	FireCombat("PLAYER_REGEN_ENABLED")
+	Equal(state.shown, false)
+
+	ns.Window.Toggle()
+	FireCombat("PLAYER_REGEN_DISABLED")
+	FireCombat("PLAYER_REGEN_ENABLED")
+	Equal(state.shown, true, "a window hidden only by combat still comes back")
+end)
+
+Test("a chat hidden along with the whole UI isn't being read", function()
+	local ns = BootWithWindow()
+	Chat(ns, "CHAT_MSG_WHISPER", { text = "hi", name = "A B" })
+	ns.Window.Open("W:A B")
+	Equal(ns.activeKey, "W:A B")
+
+	local main = TrackMainFrame(true)
+	local visible = false
+	rawset(main, "IsVisible", function() return visible end)
+	main.OnHide(main)
+	Equal(ns.activeKey, nil)
+	Chat(ns, "CHAT_MSG_WHISPER", { text = "still there?", name = "A B" })
+	Equal(ns.db.conv["W:A B"].unread, 1)
+
+	visible = true
+	main.OnShow(main)
+	Equal(ns.activeKey, "W:A B")
+	Equal(ns.db.conv["W:A B"].unread, nil)
+end)
+
+Test("a window opened normally still shows what's new", function()
+	local ns = BootWithWindow()
+	Chat(ns, "CHAT_MSG_WHISPER", { text = "hi", name = "A B" })
+	ns.Window.Open("W:A B")
+	TrackMainFrame(true)
+	ns.Window.Toggle()
+	Chat(ns, "CHAT_MSG_WHISPER", { text = "new", name = "A B" })
+
+	local unreadWhenShown
+	ns.On("SELECTION_CHANGED", function(_, _, count) unreadWhenShown = count end)
+	ns.Window.Toggle()
+	Equal(unreadWhenShown, 1, "the New messages line needs the count")
+end)
+
+Test("one alert covers all the mentions found by a recovery", function()
+	local ns, toasts = BootForAlerts()
+	LockedChat(ns, "CHAT_MSG_CHANNEL", 10, { base = "Trade" })
+	LockedChat(ns, "CHAT_MSG_CHANNEL", 11, { base = "Trade" })
+	stubs.chatLines[10] = { text = "hey me", name = "A B" }
+	stubs.chatLines[11] = { text = "me again", name = "A B" }
+	ns.Capture.Recover()
+	Equal(#toasts, 1)
+	Equal(stubs.played[1], SOUNDKIT.MAP_PING)
+
+	LockedChat(ns, "CHAT_MSG_CHANNEL", 12, { base = "Trade" })
+	stubs.chatLines[12] = { text = "me once more", name = "A B" }
+	ns.Capture.Recover()
+	Equal(#toasts, 2, "the next restriction alerts again")
+end)
+
+Test("Requests are never opened automatically", function()
+	local ns, calls = BootWithWindow()
+	stubs.serverTime = 100
+	Chat(ns, "CHAT_MSG_WHISPER", { text = "hi", name = "Old Friend" })
+	stubs.allStrangers = true
+	stubs.serverTime = 200
+	Chat(ns, "CHAT_MSG_WHISPER", { text = "buy this", name = "New Person" })
+
+	ns.Window.Toggle()
+	local _, state = TrackMainFrame(false)
+	ns.Window.Toggle()
+	Equal(state.shown, true)
+	Equal(calls.selected, "W:Old Friend")
+	Equal(ns.db.conv["W:New Person"].unread, 1)
+end)
+
+Test("an open empty window doesn't select an incoming Request", function()
+	local ns, calls = BootWithWindow()
+	stubs.allStrangers = true
+	ns.Window.Toggle()
+	TrackMainFrame(false)
+	ns.Window.Toggle()
+	Chat(ns, "CHAT_MSG_WHISPER", { text = "buy this", name = "New Person" })
+	Equal(calls.selected, nil)
+	Equal(ns.db.conv["W:New Person"].unread, 1)
+end)
+
+Test("accepting or answering a Request starts the handshake", function()
+	local ns = Boot()
+	stubs.allStrangers = true
+	Chat(ns, "CHAT_MSG_WHISPER", { text = "hi", name = "New Person" })
+	Equal(#stubs.addonSent, 0)
+	ns.Store.AcceptRequest("W:New Person")
+	Equal(ns.db.conv["W:New Person"].req, nil)
+	Equal(#stubs.addonSent, 1)
+	Equal(LastSent().text, "1;H;1")
+
+	Chat(ns, "CHAT_MSG_WHISPER", { text = "hi", name = "Other Person" })
+	Equal(#stubs.addonSent, 1)
+	Chat(ns, "CHAT_MSG_WHISPER_INFORM", { text = "hello", name = "Other Person" })
+	Equal(#stubs.addonSent, 2)
+	Equal(LastSent().target, "Other Person")
+end)
+
+Test("reactions land on the right copy of repeated text", function()
+	local ns, key, conv = BootWithPeer()
+	for _, text in ipairs({ "lol", "other", "lol" }) do
+		Chat(ns, "CHAT_MSG_WHISPER", { text = text, name = "Pal Friend" })
+	end
+	local older, newer = conv.m[2], conv.m[4]
+	local ref = ns.Protocol.Hash("lol")
+
+	ns.Protocol.ToggleReaction(key, older.i, "heart")
+	Equal(LastSent().text, "1;A;" .. ref .. ";heart;1")
+	ns.Protocol.ToggleReaction(key, newer.i, "joy")
+	Equal(LastSent().text, "1;A;" .. ref .. ";joy", "the newest copy needs no extra field")
+
+	AddonMessage(ns, "Pal Friend", "1;A;" .. ref .. ";tada;1")
+	Equal(older.r.tada ~= nil, true)
+	Equal(newer.r.tada, nil)
+	AddonMessage(ns, "Pal Friend", "1;A;" .. ref .. ";sob")
+	Equal(newer.r.sob ~= nil, true, "older clients send no occurrence")
+end)
+
+Test("blocked players match however the name was typed", function()
+	local ns = Boot()
+	ns.Filter.SetList("blockedPlayers", "First-Last, Second Name")
+	Equal(ns.Filter.BlocksWhisper("First Last", "hi", false), true)
+	Equal(ns.Filter.BlocksWhisper("Second Name", "hi", false), true)
+	Equal(ns.Filter.BlocksWhisper("Third Name", "hi", false), false)
+end)
+
+Test("a non-emoji between colons doesn't swallow the next shortcode", function()
+	local ns = Boot()
+	Equal(ns.Emoji.Render("at 10:30:heart:"), "at 10:30" .. ns.Emoji.Tag("heart"))
+	Equal(ns.Emoji.Render(":nope::heart: a:b"), ":nope:" .. ns.Emoji.Tag("heart") .. " a:b")
+	Equal(ns.Emoji.Render("a:b:c:d"), "a:b:c:d")
+end)
+
+Test("long messages never split an escaped pipe", function()
+	local ns = Boot()
+	local parts = ns.Send.SplitMessage(string.rep("a", 254) .. "||b")
+	Equal(parts[1], string.rep("a", 254))
+	Equal(parts[2], "||b")
+end)
+
+Test("an empty roster name can't abort the presence scan", function()
+	local ns = Boot()
+	stubs.friends = { { name = "", connected = true }, { name = "Fri End", connected = true } }
+	stubs.guildRoster = { { name = "", online = true }, { name = "Guild Mate", online = true } }
+	for _, frame in ipairs(stubs.frames) do
+		if frame.events.FRIENDLIST_UPDATE then frame.OnEvent(frame) end
+	end
+	Equal(ns.Identity.Presence("W:Fri End"), true)
+	Equal(ns.Identity.Presence("W:Guild Mate"), true)
+end)
+
+-- Replaces the game's scrolling list with one that counts rebuilds.
+local function CountingScrollList(ns)
+	_G.CreateScrollBoxListLinearView = function() return stubs.Tolerant() end
+	_G.CreateDataProvider = function(elements) return elements end
+	local counter = { rebuilds = 0 }
+	local box = stubs.Tolerant()
+	rawset(box, "SetDataProvider", function() counter.rebuilds = counter.rebuilds + 1 end)
+	ns.Widgets.ScrollList = function() return box, stubs.Tolerant() end
+	counter.visible = true
+	ns.Window.IsVisible = function() return counter.visible end
+	return counter
+end
+
+Test("a closed window doesn't rebuild its message list", function()
+	local ns = Boot()
+	local counter = CountingScrollList(ns)
+	ns.MessageList.Create(stubs.Tolerant())
+	ns.selectedKey = "W:A B"
+
+	counter.visible = false
+	Chat(ns, "CHAT_MSG_WHISPER", { text = "hi", name = "A B" })
+	Equal(counter.rebuilds, 0)
+
+	counter.visible = true
+	Chat(ns, "CHAT_MSG_WHISPER", { text = "again", name = "A B" })
+	Equal(counter.rebuilds, 1)
+end)
+
+Test("a closed window doesn't rebuild its sidebar", function()
+	local ns = Boot()
+	local counter = CountingScrollList(ns)
+	local field = stubs.Tolerant()
+	rawset(field, "GetText", function() return "" end)
+	ns.Widgets.Field = function() return stubs.Tolerant(), field end
+	ns.Sidebar.Create(stubs.Tolerant())
+
+	counter.visible = false
+	Chat(ns, "CHAT_MSG_WHISPER", { text = "hi", name = "A B" })
+	Equal(counter.rebuilds, 0)
+
+	counter.visible = true
+	Chat(ns, "CHAT_MSG_WHISPER", { text = "again", name = "A B" })
+	assert(counter.rebuilds > 0, "an open sidebar still updates")
+end)
+
+Test("a recovery rebuilds the message list once", function()
+	local ns = Boot()
+	local counter = CountingScrollList(ns)
+	ns.MessageList.Create(stubs.Tolerant())
+	ns.selectedKey = "W:A B"
+	for lineID = 10, 14 do
+		LockedChat(ns, "CHAT_MSG_WHISPER", lineID)
+		stubs.chatLines[lineID] = { text = "line " .. lineID, name = "A B" }
+	end
+	ns.Capture.Recover()
+	Equal(#ns.db.conv["W:A B"].m, 5)
+	Equal(counter.rebuilds, 1)
+end)
+
+Test("a long search only reports when there's something new", function()
+	local ns = Boot()
+	Chat(ns, "CHAT_MSG_WHISPER", { text = "match", name = "A B" })
+	for i = 1, 4 do
+		Chat(ns, "CHAT_MSG_WHISPER", { text = "other " .. i, name = "A B" })
+	end
+	local clock = 0
+	_G.debugprofilestop = function()
+		clock = clock + 5
+		return clock
+	end
+
+	local reports, final = 0, nil
+	ns.Search.Run("match", function(results)
+		reports = reports + 1
+		final = #results
+	end)
+	Equal(reports, 3, "the first step, the match, and the finish")
+	Equal(final, 1)
+end)
+
+Test("an empty search still reports that it finished", function()
+	local ns = Boot()
+	Chat(ns, "CHAT_MSG_WHISPER", { text = "hello", name = "A B" })
+	local reports = 0
+	ns.Search.Run("nothing", function() reports = reports + 1 end)
+	Equal(reports, 1)
+end)
+
+Test("messages sent from an alt are labelled with the alt", function()
+	local ns = Boot()
+	ns.db.chars[2] = "Alt Char"
+	local conv = Conversation({
+		{ i = 1, t = 1, x = "from this character", o = 1, c = ns.charIndex },
+		{ i = 2, t = 2, x = "from the alt", o = 1, c = 2 },
+		{ i = 3, t = 3, x = "from before characters were tracked", o = 1 },
+	})
+	local elements = ns.MessageList.BuildElements(conv, 200)
+	Equal(elements[2].sender, "You")
+	Equal(elements[2].class, "SHAMAN")
+	Equal(elements[3].sender, "Alt Char")
+	Equal(elements[3].class, nil, "an alt doesn't get this character's color")
+	Equal(elements[3].head, true, "a different character starts a new group")
+	Equal(elements[4].sender, "You")
+end)
+
+Test("pin and mute are set and cleared through SetField", function()
+	local ns = Boot()
+	Chat(ns, "CHAT_MSG_WHISPER", { text = "hi", name = "A B" })
+	local conv = ns.db.conv["W:A B"]
+	ns.Store.SetField("W:A B", "pin", true)
+	Equal(conv.pin, true)
+	ns.Store.SetField("W:A B", "pin", false or nil)
+	Equal(conv.pin, nil)
+end)
+
+Test("selecting a chat shows its draft and clears when nothing is selected", function()
+	local ns = BootWithWindow()
+	Chat(ns, "CHAT_MSG_WHISPER", { text = "hi", name = "A B" })
+	ns.db.conv["W:A B"].draft = "half a thought"
+	local box
+	ns.Window.Open("W:A B")
+	for _, frame in ipairs(stubs.frames) do
+		if rawget(frame, "OnEnterPressed") then box = frame end
+	end
+	Equal(ns.selectedKey, "W:A B")
+
+	local shownText
+	rawset(box, "SetText", function(_, text) shownText = text end)
+	ns.Window.Select("W:A B")
+	Equal(shownText, "half a thought")
+
+	ns.Store.Delete("W:A B")
+	Equal(ns.selectedKey, nil)
+	Equal(shownText, "")
+end)
+
+Test("unread badges cap their number", function()
+	local ns = Boot()
+	Equal(ns.Util.BadgeText(5), "5")
+	Equal(ns.Util.BadgeText(99), "99")
+	Equal(ns.Util.BadgeText(100), "99+")
 end)
 
 local failures = 0

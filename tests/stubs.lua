@@ -90,6 +90,7 @@ function stubs.Install()
 	_G.CreateFont = function() return Tolerant() end
 	_G.ChatFontNormal = { GetFont = function() return "font.ttf", 14, "" end }
 	_G.Settings = Tolerant()
+	_G.ScrollBoxConstants = {}
 	stubs.chatFilters = {}
 	_G.ChatFrameUtil = {
 		AddMessageEventFilter = function(event, filter) stubs.chatFilters[event] = filter end,

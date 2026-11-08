@@ -84,6 +84,11 @@ end
 -- Replaces a rule list from comma-separated text.
 function Filter.SetList(settingKey, text)
 	local list = ns.Util.ParseList(text)
+	if settingKey == "blockedPlayers" then
+		for index, entry in ipairs(list) do
+			list[index] = ns.Util.NormalizeName(entry) or entry
+		end
+	end
 	ns.Set(settingKey, #list > 0 and list or nil)
 end
 
