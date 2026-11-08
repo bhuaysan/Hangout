@@ -454,6 +454,16 @@ Test("messages group under one header until the sender or time changes", functio
 	Equal(elements[5].head, true)
 end)
 
+Test("day separators use plain words for recent days", function()
+	local ns = Boot()
+	local noon = 86400 * 20000 + 43200
+	local label = ns.MessageList.DayLabel
+	Equal(label(noon, noon), "Today")
+	Equal(label(noon - 86400, noon), "Yesterday")
+	assert(not label(noon - 86400 * 2, noon):find("%-"), "an older day isn't shown as a numeric date")
+	assert(label(noon - 86400 * 400, noon):find(", %d%d%d%d$"), "another year shows the year")
+end)
+
 Test("a new day adds a separator and restarts grouping", function()
 	local ns = Boot()
 	local base = 86400 * 100

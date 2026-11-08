@@ -123,6 +123,11 @@ function stubs.Install()
 		if format == "%Y-%m-%d" then
 			return "day" .. math.floor((time or 0) / SECONDS_PER_DAY)
 		end
+		if format == "%B " then return "November " end
+		if format == "%d" then return "08" end
+		if format == "%Y" then
+			return tostring(1970 + math.floor((time or 0) / (SECONDS_PER_DAY * 365)))
+		end
 		return "12:00"
 	end
 	_G.C_AddOns = { GetAddOnMetadata = function() return "test" end }

@@ -5,6 +5,7 @@ ns.MessageList = MessageList
 
 local PAGE_SIZE = 200
 local GROUP_WINDOW_SECONDS = 300
+local SECONDS_PER_DAY = 86400
 local SIDE_PADDING = 12
 local CREST_SIZE = 26
 local TEXT_LEFT = SIDE_PADDING + CREST_SIZE + 8
@@ -60,6 +61,19 @@ local function ClassOf(message, conv)
 	return conv.class
 end
 
+-- The separator text for the day a message was sent.
+function MessageList.DayLabel(timestamp, now)
+	local day = date("%Y-%m-%d", timestamp)
+	if day == date("%Y-%m-%d", now) then return "Today" end
+	if day == date("%Y-%m-%d", now - SECONDS_PER_DAY) then return "Yesterday" end
+
+	local label = date("%B ", timestamp) .. tonumber(date("%d", timestamp))
+	if date("%Y", timestamp) ~= date("%Y", now) then
+		label = label .. ", " .. date("%Y", timestamp)
+	end
+	return label
+end
+
 -- Turns stored messages into list rows: day separators, and messages that
 -- only show a header when the sender changes or time has passed.
 -- unreadAfterId, if set, marks where "New messages" begins.
@@ -71,6 +85,7 @@ function MessageList.BuildElements(conv, limit, live, unreadAfterId)
 		elements[1] = { kind = "older", label = "Load older messages" }
 	end
 
+	local now = GetServerTime()
 	local previousDay, previous, previousSender
 	local dividerPlaced = false
 	local seenPosition
@@ -78,7 +93,7 @@ function MessageList.BuildElements(conv, limit, live, unreadAfterId)
 		local message = messages[i]
 		local day = date("%Y-%m-%d", message.t)
 		if day ~= previousDay then
-			elements[#elements + 1] = { kind = "day", label = day }
+			elements[#elements + 1] = { kind = "day", label = MessageList.DayLabel(message.t, now) }
 			previousDay = day
 			previous = nil
 		end
