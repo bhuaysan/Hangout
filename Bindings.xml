@@ -1,0 +1,5 @@
+<Bindings>
+	<Binding name="HANGOUT_TOGGLE" category="Hangout">
+		Hangout_Toggle()
+	</Binding>
+</Bindings>

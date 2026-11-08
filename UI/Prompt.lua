@@ -1,0 +1,72 @@
+local _, ns = ...
+
+local Prompt = {}
+ns.Prompt = Prompt
+
+local WIDTH = 340
+local FIELD_WIDTH = 308
+local HEIGHT_WITH_FIELD = 118
+local HEIGHT_WITHOUT_FIELD = 92
+
+local frame, message, holder, field, accept, acceptLabel
+local onAccept
+
+local function Finish()
+	frame:Hide()
+	if onAccept then
+		onAccept(field:GetText())
+	end
+end
+
+local function Create()
+	frame = CreateFrame("Frame", "HangoutPrompt", UIParent)
+	frame:SetFrameStrata("DIALOG")
+	frame:SetPoint("CENTER")
+	frame:SetWidth(WIDTH)
+	frame:EnableMouse(true)
+	frame:Hide()
+	tinsert(UISpecialFrames, "HangoutPrompt")
+	ns.Widgets.Fill(frame, "sidebar")
+
+	message = ns.Widgets.Text(frame, "GameFontHighlight", "text")
+	message:SetPoint("TOPLEFT", 16, -14)
+	message:SetPoint("TOPRIGHT", -16, -14)
+	message:SetWordWrap(true)
+
+	holder, field = ns.Widgets.Field(frame, FIELD_WIDTH)
+	holder:SetPoint("BOTTOMLEFT", 16, 46)
+	field:SetScript("OnEnterPressed", Finish)
+	field:SetScript("OnEscapePressed", function() frame:Hide() end)
+
+	accept, acceptLabel = ns.Widgets.FlatButton(frame, "OK", 90)
+	accept:SetPoint("BOTTOMRIGHT", -16, 14)
+	accept:SetScript("OnClick", Finish)
+
+	local cancel = ns.Widgets.FlatButton(frame, "Cancel", 80)
+	cancel:SetPoint("RIGHT", accept, "LEFT", -8, 0)
+	cancel:SetScript("OnClick", function() frame:Hide() end)
+end
+
+local function Open(text, label, withField, initial, callback)
+	if not frame then Create() end
+	onAccept = callback
+	message:SetText(text)
+	acceptLabel:SetText(label)
+	holder:SetShown(withField)
+	field:SetText(initial or "")
+	frame:SetHeight(withField and HEIGHT_WITH_FIELD or HEIGHT_WITHOUT_FIELD)
+	frame:Show()
+	if withField then
+		field:SetFocus()
+		field:HighlightText()
+	end
+end
+
+-- callback receives the entered text.
+function Prompt.AskText(text, initial, callback)
+	Open(text, "Save", true, initial, callback)
+end
+
+function Prompt.Confirm(text, label, callback)
+	Open(text, label, false, nil, callback)
+end

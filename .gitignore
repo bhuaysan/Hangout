@@ -1,0 +1,12 @@
+# Claude Code local files
+.claude/
+
+# Editor and OS clutter
+*~
+*.swp
+*.bak
+*.orig
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
