@@ -31,7 +31,7 @@ function ProfileBar.Create(parent)
 	bar:SetPoint("BOTTOMLEFT")
 	bar:SetPoint("BOTTOMRIGHT")
 	bar:SetHeight(ProfileBar.HEIGHT)
-	ns.Widgets.Fill(bar, "dock")
+	ns.Widgets.RoundedFill(bar, "dock", nil, "bottomLeft"):SetAllPoints()
 
 	crest = ns.Widgets.ClassCrest(bar, CREST_SIZE)
 	crest:SetPoint("LEFT", CREST_LEFT, 0)

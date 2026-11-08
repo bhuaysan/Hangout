@@ -26,7 +26,7 @@ local function Create()
 	frame:EnableMouse(true)
 	frame:Hide()
 	tinsert(UISpecialFrames, "HangoutPrompt")
-	ns.Widgets.Fill(frame, "sidebar")
+	ns.Widgets.RoundedFill(frame, "sidebar"):SetAllPoints()
 
 	message = ns.Widgets.Text(frame, "GameFontHighlight", "text")
 	message:SetPoint("TOPLEFT", 16, -14)

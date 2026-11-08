@@ -93,7 +93,7 @@ local function Create()
 	frame:Hide()
 	RestorePosition()
 
-	ns.Widgets.Fill(frame, "glance")
+	ns.Widgets.RoundedFill(frame, "glance"):SetAllPoints()
 	ns.Widgets.Border(frame, "frameEdge")
 
 	for index = 1, MAX_LINES do

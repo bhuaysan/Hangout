@@ -59,11 +59,12 @@ local function Create()
 	end)
 	frame:SetScript("OnMouseUp", OnMouseUp)
 
-	ns.Widgets.Fill(frame, "sidebar")
+	ns.Widgets.RoundedFill(frame, "sidebar"):SetAllPoints()
 
+	-- Stops short of the corners, which are rounded.
 	local bar = ns.Widgets.Solid(frame, "accent", "ARTWORK")
-	bar:SetPoint("TOPLEFT")
-	bar:SetPoint("BOTTOMLEFT")
+	bar:SetPoint("TOPLEFT", 0, -7)
+	bar:SetPoint("BOTTOMLEFT", 0, 7)
 	bar:SetWidth(3)
 
 	crest = ns.Widgets.ClassCrest(frame, CREST_SIZE)

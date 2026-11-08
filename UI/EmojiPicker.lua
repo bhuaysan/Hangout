@@ -141,7 +141,7 @@ local function Create(anchor)
 	panel:SetFrameLevel(anchor:GetFrameLevel() + 20)
 	panel:EnableMouse(true)
 	panel:Hide()
-	ns.Widgets.Fill(panel, "popup")
+	ns.Widgets.RoundedFill(panel, "popup"):SetAllPoints()
 
 	CreateSearch()
 	CreateTabs(tabsTop)

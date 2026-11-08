@@ -10,7 +10,16 @@ local CREST_TEXTURE = "Interface\\TargetingFrame\\UI-Classes-Circles"
 local RING_TEXTURE = "Interface\\AddOns\\Hangout\\Media\\ring.png"
 local RING_EXTRA_SIZE = 4
 local SCROLL_BAR_ALPHA = 0.5
-local ROUNDED_TEXTURE = "Interface\\AddOns\\Hangout\\Media\\bubble.png"
+local MEDIA = "Interface\\AddOns\\Hangout\\Media\\"
+-- The whole shape is rounded unless a panel only touches some window corners.
+local ROUNDED_SHAPES = {
+	all = MEDIA .. "bubble.png",
+	left = MEDIA .. "corner-left.png",
+	topRight = MEDIA .. "corner-topright.png",
+	bottomLeft = MEDIA .. "corner-bottomleft.png",
+	bottomRight = MEDIA .. "corner-bottomright.png",
+	outline = MEDIA .. "outline.png",
+}
 local ROUNDED_SLICE_MARGIN = 8
 local ICON_ATLAS = "Interface\\AddOns\\Hangout\\Media\\icons.png"
 local ICON_COLUMNS = 4
@@ -72,17 +81,17 @@ function Widgets.Text(frame, fontObject, token)
 end
 
 -- A rounded shape that stretches cleanly. Color it with SetVertexColor.
-function Widgets.Rounded(frame, layer)
+function Widgets.Rounded(frame, layer, shape)
 	local texture = frame:CreateTexture(nil, layer or "BACKGROUND")
-	texture:SetTexture(ROUNDED_TEXTURE)
+	texture:SetTexture(ROUNDED_SHAPES[shape or "all"])
 	texture:SetTextureSliceMargins(ROUNDED_SLICE_MARGIN, ROUNDED_SLICE_MARGIN, ROUNDED_SLICE_MARGIN, ROUNDED_SLICE_MARGIN)
 	texture:SetTextureSliceMode(Enum.UITextureSliceMode.Stretched)
 	return texture
 end
 
 -- A rounded shape in a theme color. The caller anchors it.
-function Widgets.RoundedFill(frame, token, layer)
-	local texture = Widgets.Rounded(frame, layer)
+function Widgets.RoundedFill(frame, token, layer, shape)
+	local texture = Widgets.Rounded(frame, layer, shape)
 	Track(texture, token, false, true)
 	return texture
 end
@@ -185,28 +194,9 @@ function Widgets.ShowChatAvatar(avatar, info)
 	end
 end
 
--- A one-pixel themed line along each edge of a frame.
+-- A thin themed outline that follows the rounded corners.
 function Widgets.Border(frame, token)
-	local top = Widgets.Solid(frame, token, "OVERLAY")
-	top:SetPoint("TOPLEFT")
-	top:SetPoint("TOPRIGHT")
-	top:SetHeight(1)
-
-	local bottom = Widgets.Solid(frame, token, "OVERLAY")
-	bottom:SetPoint("BOTTOMLEFT")
-	bottom:SetPoint("BOTTOMRIGHT")
-	bottom:SetHeight(1)
-
-	-- The sides stop short of the corners, so overlapping lines don't look brighter.
-	local left = Widgets.Solid(frame, token, "OVERLAY")
-	left:SetPoint("TOPLEFT", 0, -1)
-	left:SetPoint("BOTTOMLEFT", 0, 1)
-	left:SetWidth(1)
-
-	local right = Widgets.Solid(frame, token, "OVERLAY")
-	right:SetPoint("TOPRIGHT", 0, -1)
-	right:SetPoint("BOTTOMRIGHT", 0, 1)
-	right:SetWidth(1)
+	Widgets.RoundedFill(frame, token, "OVERLAY", "outline"):SetAllPoints()
 end
 
 -- A class crest texture with a themed ring around it. The caller anchors the
