@@ -511,6 +511,27 @@ Test("Do Not Disturb announces every change", function()
 	Equal(changes, 1)
 end)
 
+Test("the header line says what is known about a person", function()
+	local ns = Boot()
+	ns.Identity.Presence = function() return true end
+	Equal(ns.Window.SubtitleFor("W:A B", { class = "SHAMAN" }), "Online  ·  Schamane")
+	Equal(ns.Window.SubtitleFor("W:A B", { class = "SHAMAN", note = "healer" }), "Online  ·  Schamane  ·  healer")
+	ns.Identity.Presence = function() return nil end
+	Equal(ns.Window.SubtitleFor("W:A B", {}), "")
+end)
+
+Test("the header line names group chats and channels", function()
+	local ns = Boot()
+	Equal(ns.Window.SubtitleFor("G:Horde Heroes", {}), "Group chat")
+	Equal(ns.Window.SubtitleFor("C:trade", {}), "Channel")
+end)
+
+Test("the field color is solid so it hides what is behind it", function()
+	local ns = Boot()
+	local _, _, _, alpha = ns.Theme.Color("fieldSolid")
+	Equal(alpha, 1)
+end)
+
 Test("a new day adds a separator and restarts grouping", function()
 	local ns = Boot()
 	local base = 86400 * 100

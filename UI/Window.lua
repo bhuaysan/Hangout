@@ -7,14 +7,22 @@ local DEFAULT_WIDTH, DEFAULT_HEIGHT = 730, 440
 local MIN_WIDTH, MIN_HEIGHT = 520, 260
 local SIDEBAR_WIDTH = 240
 local SIDEBAR_COLLAPSED_WIDTH = 56
-local HEADER_HEIGHT = 40
-local COMPOSER_HEIGHT = 40
+local HEADER_HEIGHT = 54
+local COMPOSER_HEIGHT = 60
+local HEADER_BUTTON_SIZE = 28
+local HEADER_ICON_SIZE = 17
+local HEADER_AVATAR_SIZE = 30
+local HEADER_AVATAR_LEFT = 42
+local TITLE_LEFT_PLAIN = 42
+local TITLE_LEFT_WITH_AVATAR = HEADER_AVATAR_LEFT + HEADER_AVATAR_SIZE + 10
+local TITLE_RIGHT_RESERVE = 130
 local BANNER_HEIGHT = 24
 local RESIZE_REFRESH_DELAY = 0.1
 local EDGE_LEVEL_OFFSET = 35
 local GRIP_LEVEL_OFFSET = 40
 
-local frame, title, noteText, status, collapseLabel, header, banner, messages, sidebar, emptyHint
+local frame, title, subtitle, header, banner, messages, sidebar, emptyHint
+local collapseButton, closeButton, settingsButton, muteButton, pinButton, avatar
 local settingsOpen = false
 local faded = false
 local hiddenForCombat = false
@@ -71,16 +79,18 @@ local function UpdateActive()
 	end
 end
 
-local function HeaderButton(parent, text)
-	local button, label = ns.Widgets.TextButton(parent, text, "GameFontHighlightLarge")
-	button:SetSize(24, 24)
-	return button, label
+local function HeaderButton(icon, tooltip)
+	return ns.Widgets.IconButton(header, icon, HEADER_BUTTON_SIZE, HEADER_ICON_SIZE, tooltip)
 end
 
 local function SetCollapsed(collapsed)
 	ns.Set("sidebarCollapsed", collapsed)
 	sidebar:SetWidth(collapsed and SIDEBAR_COLLAPSED_WIDTH or SIDEBAR_WIDTH)
-	collapseLabel:SetText(collapsed and "»" or "«")
+	ns.Widgets.SetIcon(collapseButton.icon, collapsed and "expand" or "collapse")
+	-- The profile bar's gear is hidden when collapsed, so Settings moves up here.
+	settingsButton:SetShown(collapsed)
+	muteButton:ClearAllPoints()
+	muteButton:SetPoint("RIGHT", collapsed and settingsButton or closeButton, "LEFT", -2, 0)
 	ns.Sidebar.SetCollapsed(collapsed)
 	refreshAfterResize()
 end
@@ -109,10 +119,11 @@ local function CreateFrameEdge()
 	ns.Widgets.Border(edge, "frameEdge")
 end
 
-local function Divider(parent)
-	local line = ns.Widgets.Solid(parent, "divider", "ARTWORK")
-	line:SetHeight(1)
-	return line
+local function ToggleField(field)
+	local conv = ns.selectedKey and ns.Store.Get(ns.selectedKey)
+	if conv then
+		ns.Store.SetField(ns.selectedKey, field, not conv[field] or nil)
+	end
 end
 
 local function CreateHeader()
@@ -120,34 +131,38 @@ local function CreateHeader()
 	header:SetPoint("TOPLEFT", sidebar, "TOPRIGHT")
 	header:SetPoint("TOPRIGHT")
 	header:SetHeight(HEADER_HEIGHT)
+	ns.Widgets.Fill(header, "raised")
 
-	local collapseButton
-	collapseButton, collapseLabel = HeaderButton(header, "«")
-	collapseButton:SetPoint("LEFT", 6, 0)
+	collapseButton = HeaderButton("collapse", "Show or hide the sidebar")
+	collapseButton:SetPoint("LEFT", 8, 0)
 	collapseButton:SetScript("OnClick", function()
 		SetCollapsed(not ns.Get("sidebarCollapsed"))
 	end)
 
+	avatar = ns.Widgets.ChatAvatar(header, HEADER_AVATAR_SIZE, 16)
+	ns.Widgets.PlaceChatAvatar(avatar, "LEFT", HEADER_AVATAR_LEFT, 0)
+
 	title = ns.Widgets.Text(header, "GameFontNormalLarge", "text")
 	title:SetWordWrap(false)
 
-	noteText = ns.Widgets.Text(header, "GameFontDisableSmall", "muted")
-	noteText:SetPoint("TOPLEFT", 34, -24)
-	noteText:SetPoint("TOPRIGHT", -170, -24)
-	noteText:SetWordWrap(false)
+	subtitle = ns.Widgets.Text(header, "GameFontDisableSmall", "muted")
+	subtitle:SetWordWrap(false)
 
-	local closeButton = HeaderButton(header, "×")
+	closeButton = HeaderButton("close", "Close")
 	closeButton:SetPoint("RIGHT", -8, 0)
 	closeButton:SetScript("OnClick", function() frame:Hide() end)
 
-	local settingsButton = ns.Widgets.TextButton(header, "Settings", "GameFontHighlightSmall")
-	settingsButton:SetSize(56, 24)
-	settingsButton:SetPoint("RIGHT", closeButton, "LEFT", -6, 0)
+	settingsButton = HeaderButton("gear", "Settings")
+	settingsButton:SetPoint("RIGHT", closeButton, "LEFT", -2, 0)
 	settingsButton:SetScript("OnClick", function() ns.SettingsUI.Toggle() end)
 
-	status = ns.Widgets.Text(header, "GameFontDisableSmall", "muted")
-	status:SetPoint("RIGHT", settingsButton, "LEFT", -8, 0)
-	status:SetJustifyH("RIGHT")
+	muteButton = HeaderButton("mute", "Mute this chat")
+	muteButton:SetPoint("RIGHT", closeButton, "LEFT", -2, 0)
+	muteButton:SetScript("OnClick", function() ToggleField("mute") end)
+
+	pinButton = HeaderButton("pin", "Pin this chat")
+	pinButton:SetPoint("RIGHT", muteButton, "LEFT", -2, 0)
+	pinButton:SetScript("OnClick", function() ToggleField("pin") end)
 end
 
 local function CreateBanner()
@@ -207,7 +222,8 @@ local function Create()
 	CreateHeader()
 	SetCollapsed(ns.Get("sidebarCollapsed"))
 
-	local headerLine = Divider(frame)
+	local headerLine = ns.Widgets.Solid(frame, "edge", "ARTWORK")
+	headerLine:SetHeight(1)
 	headerLine:SetPoint("TOPLEFT", header, "BOTTOMLEFT")
 	headerLine:SetPoint("TOPRIGHT", header, "BOTTOMRIGHT")
 
@@ -216,10 +232,6 @@ local function Create()
 	composer:SetPoint("BOTTOMRIGHT")
 	composer:SetHeight(COMPOSER_HEIGHT)
 	ns.Composer.Create(composer)
-
-	local composerLine = Divider(frame)
-	composerLine:SetPoint("BOTTOMLEFT", composer, "TOPLEFT")
-	composerLine:SetPoint("BOTTOMRIGHT", composer, "TOPRIGHT")
 
 	CreateBanner()
 
@@ -248,29 +260,45 @@ local function UpdateRestriction()
 	refreshAfterResize()
 end
 
-local function UpdateStatus()
-	if not frame then return end
-	local presence = ns.selectedKey and ns.Identity.Presence(ns.selectedKey)
-	if settingsOpen then
-		status:SetText("")
-	elseif ns.selectedKey and ns.Protocol.IsTyping(ns.selectedKey) then
-		status:SetText("typing...")
-	elseif presence == nil then
-		status:SetText("")
+-- The small line under a chat's name.
+function Window.SubtitleFor(key, conv)
+	if ns.Protocol.IsTyping(key) then return "typing..." end
+
+	local category = ns.CategoryOf(key)
+	if category == "group" then return "Group chat" end
+	if category == "channel" then return "Channel" end
+
+	local parts = {}
+	local presence = ns.Identity.Presence(key)
+	if presence ~= nil then parts[#parts + 1] = presence and "Online" or "Offline" end
+	local className = conv.class and LOCALIZED_CLASS_NAMES_MALE[conv.class]
+	if className then parts[#parts + 1] = className end
+	if conv.note then parts[#parts + 1] = conv.note end
+	return table.concat(parts, "  ·  ")
+end
+
+local function AnchorTitle(hasAvatar, hasSubtitle)
+	local left = hasAvatar and TITLE_LEFT_WITH_AVATAR or TITLE_LEFT_PLAIN
+	title:ClearAllPoints()
+	subtitle:ClearAllPoints()
+	if hasSubtitle then
+		title:SetPoint("TOPLEFT", left, -10)
+		title:SetPoint("TOPRIGHT", -TITLE_RIGHT_RESERVE, -10)
+		subtitle:SetPoint("TOPLEFT", left, -31)
+		subtitle:SetPoint("TOPRIGHT", -TITLE_RIGHT_RESERVE, -31)
 	else
-		status:SetText(presence and "online" or "offline")
+		title:SetPoint("LEFT", left, 0)
+		title:SetPoint("RIGHT", -TITLE_RIGHT_RESERVE, 0)
 	end
 end
 
-local function AnchorTitle(hasNote)
-	title:ClearAllPoints()
-	if hasNote then
-		title:SetPoint("TOPLEFT", 34, -6)
-		title:SetPoint("TOPRIGHT", -170, -6)
-	else
-		title:SetPoint("LEFT", 34, 0)
-		title:SetPoint("RIGHT", -170, 0)
-	end
+local function UpdateStatus()
+	if not frame then return end
+	local conv = not settingsOpen and ns.selectedKey and ns.Store.Get(ns.selectedKey)
+	local text = conv and Window.SubtitleFor(ns.selectedKey, conv) or ""
+	subtitle:SetText(text)
+	subtitle:SetShown(text ~= "")
+	AnchorTitle(conv and true or false, text ~= "")
 end
 
 -- The name on top, with the chat's note under it when there is one.
@@ -278,7 +306,7 @@ local function UpdateTitle()
 	if not frame then return end
 	local conv = ns.selectedKey and ns.Store.Get(ns.selectedKey)
 	local hasChats = conv ~= nil or #ns.Store.List() > 0
-	local hasNote = conv ~= nil and conv.note ~= nil and not settingsOpen
+	local showsChat = conv ~= nil and not settingsOpen
 
 	if settingsOpen then
 		title:SetText("Settings")
@@ -287,10 +315,24 @@ local function UpdateTitle()
 	else
 		title:SetText(hasChats and "Select a conversation" or "No conversations yet")
 	end
-	noteText:SetShown(hasNote)
-	noteText:SetText(hasNote and conv.note or "")
-	AnchorTitle(hasNote)
 	emptyHint:SetShown(not hasChats)
+
+	ns.Widgets.ShowChatAvatar(avatar, showsChat and {
+		key = ns.selectedKey,
+		class = conv.class,
+		label = ns.Store.LabelFor(ns.selectedKey, conv),
+		presence = ns.Identity.Presence(ns.selectedKey),
+		muted = conv.mute,
+	} or nil)
+
+	local canPin = showsChat and ns.Store.IsPersistent(ns.selectedKey)
+	pinButton:SetShown(canPin)
+	muteButton:SetShown(canPin)
+	if canPin then
+		ns.Widgets.SetIconButtonActive(pinButton, conv.pin)
+		ns.Widgets.SetIconButtonActive(muteButton, conv.mute)
+	end
+	UpdateStatus()
 end
 
 function Window.Select(key)

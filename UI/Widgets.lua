@@ -19,6 +19,10 @@ local ICON_NAMES = {
 	"close", "gear", "moon", "pin",
 	"mute", "hash", "guild", "smile",
 }
+local STATUS_ICON = {
+	[true] = "Interface\\FriendsFrame\\StatusIcon-Online",
+	[false] = "Interface\\FriendsFrame\\StatusIcon-Offline",
+}
 local ICON_INDEX = {}
 for index, name in ipairs(ICON_NAMES) do
 	ICON_INDEX[name] = index
@@ -108,6 +112,7 @@ function Widgets.IconButton(parent, name, size, iconSize, tooltip)
 	button:SetSize(size, size)
 	local icon, entry = Widgets.Icon(button, name, iconSize, "muted")
 	icon:SetPoint("CENTER")
+	button.icon = icon
 	button.iconEntry = entry
 
 	button:SetScript("OnEnter", function(self)
@@ -129,6 +134,55 @@ end
 function Widgets.SetIconButtonActive(button, isActive)
 	button.iconEntry.token = isActive and "accent" or "muted"
 	PaintRegion(button.iconEntry)
+end
+
+-- A chat's picture: its class crest, otherwise a first letter for a person or
+-- an icon for a channel or group, with the online dot on the corner.
+function Widgets.ChatAvatar(frame, size, iconSize)
+	local avatar = {}
+	avatar.crest = Widgets.ClassCrest(frame, size)
+	avatar.slot = Widgets.RoundedFill(frame, "selected", "BORDER")
+	avatar.slot:SetSize(size, size)
+	avatar.icon = Widgets.Icon(frame, "hash", iconSize, "muted")
+	avatar.icon:SetPoint("CENTER", avatar.slot)
+	avatar.letter = Widgets.Text(frame, "GameFontHighlight", "muted")
+	avatar.letter:SetPoint("CENTER", avatar.slot)
+	avatar.status = frame:CreateTexture(nil, "OVERLAY", nil, 1) -- above the crest's ring
+	avatar.status:SetSize(14, 14)
+	return avatar
+end
+
+function Widgets.PlaceChatAvatar(avatar, ...)
+	avatar.crest:ClearAllPoints()
+	avatar.crest:SetPoint(...)
+	avatar.slot:ClearAllPoints()
+	avatar.slot:SetPoint(...)
+end
+
+-- info: { key, class, label, presence, muted }, or nil to show nothing.
+function Widgets.ShowChatAvatar(avatar, info)
+	local hasCrest = Widgets.SetClassCrest(avatar.crest, info and info.class or nil)
+	avatar.crest:SetDesaturated(hasCrest and info.muted and true or false)
+
+	local prefix = info and info.key:sub(1, 1)
+	local isPerson = prefix == "W" or prefix == "B" or prefix == "L"
+	local hasSlot = info ~= nil and not hasCrest
+	avatar.slot:SetShown(hasSlot)
+	avatar.letter:SetShown(hasSlot and isPerson)
+	avatar.icon:SetShown(hasSlot and not isPerson)
+	if hasSlot and isPerson then
+		avatar.letter:SetText(ns.Util.FirstCharacter(info.label))
+	elseif hasSlot then
+		Widgets.SetIcon(avatar.icon, prefix == "C" and "hash" or "guild")
+	end
+
+	local hasStatus = info ~= nil and info.presence ~= nil
+	avatar.status:SetShown(hasStatus)
+	if hasStatus then
+		avatar.status:SetTexture(STATUS_ICON[info.presence])
+		avatar.status:ClearAllPoints()
+		avatar.status:SetPoint("CENTER", hasCrest and avatar.crest or avatar.slot, "BOTTOMRIGHT", -2, 2)
+	end
 end
 
 -- A one-pixel themed line along each edge of a frame.
@@ -200,7 +254,7 @@ end
 function Widgets.FlatButton(parent, text, width)
 	local button = CreateFrame("Button", nil, parent)
 	button:SetSize(width, 22)
-	Widgets.Fill(button, "selected")
+	Widgets.RoundedFill(button, "selected"):SetAllPoints()
 	local label = Widgets.Text(button, "GameFontHighlight", "text")
 	label:SetPoint("CENTER")
 	label:SetJustifyH("CENTER")
@@ -212,7 +266,7 @@ end
 function Widgets.Field(parent, width)
 	local holder = CreateFrame("Frame", nil, parent)
 	holder:SetSize(width, 22)
-	Widgets.Fill(holder, "selected")
+	Widgets.RoundedFill(holder, "selected"):SetAllPoints()
 
 	local field = CreateFrame("EditBox", nil, holder)
 	field:SetPoint("TOPLEFT", 6, 0)

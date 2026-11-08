@@ -31,6 +31,9 @@ local DARK_OVERLAYS = {
 	divider = { 1, 1, 1, 0.07 },
 	outline = { 1, 1, 1, 0.30 },
 	dock = { 0, 0, 0, 0.25 },
+	raised = { 1, 1, 1, 0.05 },
+	edge = { 0, 0, 0, 0.55 },
+	field = { 1, 1, 1, 0.08 },
 	notice = { 0.62, 0.42, 0.08, 0.45 },
 }
 
@@ -40,6 +43,9 @@ local LIGHT_OVERLAYS = {
 	divider = { 0, 0, 0, 0.12 },
 	outline = { 0, 0, 0, 0.35 },
 	dock = { 0, 0, 0, 0.07 },
+	raised = { 1, 1, 1, 0.35 },
+	edge = { 0, 0, 0, 0.18 },
+	field = { 1, 1, 1, 0.55 },
 	notice = { 0.95, 0.70, 0.20, 0.55 },
 }
 
@@ -103,6 +109,13 @@ local function BuildTokens()
 	end
 	-- A solid copy of the background, for layers that cover other content.
 	tokens.panel = { tokens.bg[1], tokens.bg[2], tokens.bg[3], 1 }
+	local field = tokens.field
+	tokens.fieldSolid = {
+		tokens.bg[1] + (field[1] - tokens.bg[1]) * field[4],
+		tokens.bg[2] + (field[2] - tokens.bg[2]) * field[4],
+		tokens.bg[3] + (field[3] - tokens.bg[3]) * field[4],
+		1,
+	}
 	tokens.popup = { tokens.sidebar[1], tokens.sidebar[2], tokens.sidebar[3], 1 }
 	tokens.glance = { tokens.sidebar[1], tokens.sidebar[2], tokens.sidebar[3], GLANCE_ALPHA }
 	tokens.frameEdge = { tokens.accent[1], tokens.accent[2], tokens.accent[3], FRAME_EDGE_ALPHA }

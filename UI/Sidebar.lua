@@ -7,8 +7,11 @@ local HEADER_HEIGHT = 26
 local COLLAPSED_HEADER_HEIGHT = 8
 local ROW_HEIGHT = 48
 local RESULT_ROW_HEIGHT = 42
-local SEARCH_HEIGHT = 34
-local NEW_CHAT_SIZE = 22
+local SEARCH_HEIGHT = 44
+local SEARCH_FIELD_HEIGHT = 28
+local SEARCH_TEXT_LEFT = 26
+local SEARCH_ICON_SIZE = 14
+local NEW_CHAT_SIZE = 28
 local CREST_LEFT = 14
 local CREST_SIZE = 30
 local ROW_TEXT_LEFT = CREST_LEFT + CREST_SIZE + 10
@@ -29,11 +32,6 @@ local SECTIONS = {
 	{ label = "WHISPERS", prefixes = "WBL" },
 	{ label = "GROUP", prefixes = "GOPRI" },
 	{ label = "CHANNELS", prefixes = "C" },
-}
-
-local STATUS_ICON = {
-	[true] = "Interface\\FriendsFrame\\StatusIcon-Online",
-	[false] = "Interface\\FriendsFrame\\StatusIcon-Offline",
 }
 
 local scrollBox, searchHolder, searchBox, searchPlaceholder, newChatButton
@@ -234,16 +232,7 @@ local function BuildRow(frame)
 	frame.selected = ns.Widgets.RoundedFill(frame, "selected")
 	frame.selected:Hide()
 
-	frame.crest = ns.Widgets.ClassCrest(frame, CREST_SIZE)
-
-	frame.slot = ns.Widgets.RoundedFill(frame, "selected", "BORDER")
-	frame.slot:SetSize(CREST_SIZE, CREST_SIZE)
-	frame.slotIcon = ns.Widgets.Icon(frame, "hash", ROOM_ICON_SIZE, "muted")
-	frame.slotIcon:SetPoint("CENTER", frame.slot)
-	frame.slotLetter = ns.Widgets.Text(frame, "GameFontHighlight", "muted")
-	frame.slotLetter:SetPoint("CENTER", frame.slot)
-
-	frame.status = frame:CreateTexture(nil, "OVERLAY", nil, 1) -- above the crest's ring
+	frame.avatar = ns.Widgets.ChatAvatar(frame, CREST_SIZE, ROOM_ICON_SIZE)
 
 	frame.text = ns.Widgets.Text(frame, "GameFontHighlight", "text")
 	frame.text:SetWordWrap(false)
@@ -266,54 +255,13 @@ local function BuildRow(frame)
 	frame:SetScript("OnLeave", OnRowLeave)
 end
 
-local function IconForChat(key)
-	return key:sub(1, 1) == "C" and "hash" or "guild"
-end
-
-local function IsPersonKey(key)
-	local prefix = key:sub(1, 1)
-	return prefix == "W" or prefix == "B" or prefix == "L"
-end
-
-local function AnchorToIconColumn(region)
-	region:ClearAllPoints()
-	if collapsed then
-		region:SetPoint("CENTER")
-	else
-		region:SetPoint("LEFT", CREST_LEFT, 0)
-	end
-end
-
--- Every row gets something in the icon column: a crest when the class is known,
--- otherwise a first letter for a person or an icon for a channel or group.
 local function LayoutIcons(frame, element)
-	local isRow = element.kind == "row"
-	local hasCrest = ns.Widgets.SetClassCrest(frame.crest, isRow and element.class or nil)
-	frame.crest:SetDesaturated(hasCrest and element.muted and true or false)
-	AnchorToIconColumn(frame.crest)
-
-	local hasSlot = isRow and not hasCrest
-	local isPerson = hasSlot and IsPersonKey(element.key)
-	frame.slot:SetShown(hasSlot)
-	frame.slotIcon:SetShown(hasSlot and not isPerson)
-	frame.slotLetter:SetShown(isPerson)
-	if hasSlot then
-		AnchorToIconColumn(frame.slot)
-		if isPerson then
-			frame.slotLetter:SetText(ns.Util.FirstCharacter(element.label))
-		else
-			ns.Widgets.SetIcon(frame.slotIcon, IconForChat(element.key))
-		end
+	if collapsed then
+		ns.Widgets.PlaceChatAvatar(frame.avatar, "CENTER")
+	else
+		ns.Widgets.PlaceChatAvatar(frame.avatar, "LEFT", CREST_LEFT, 0)
 	end
-
-	local hasStatus = isRow and element.presence ~= nil
-	frame.status:SetShown(hasStatus)
-	if hasStatus then
-		frame.status:SetTexture(STATUS_ICON[element.presence])
-		frame.status:SetSize(14, 14)
-		frame.status:ClearAllPoints()
-		frame.status:SetPoint("CENTER", hasCrest and frame.crest or frame.slot, "BOTTOMRIGHT", -2, 2)
-	end
+	ns.Widgets.ShowChatAvatar(frame.avatar, element.kind == "row" and element or nil)
 end
 
 local function LayoutHighlights(frame)
@@ -443,10 +391,14 @@ local function CreateSearchBox(parent)
 	searchHolder, field = ns.Widgets.Field(parent, 1)
 	searchHolder:SetPoint("TOPLEFT", 8, -8)
 	searchHolder:SetPoint("TOPRIGHT", -(8 + NEW_CHAT_SIZE + 4), -8)
+	searchHolder:SetHeight(SEARCH_FIELD_HEIGHT)
+	field:SetPoint("TOPLEFT", SEARCH_TEXT_LEFT, 0)
 	searchBox = field
 
+	ns.Widgets.Icon(searchHolder, "search", SEARCH_ICON_SIZE, "muted"):SetPoint("LEFT", 7, 0)
+
 	searchPlaceholder = ns.Widgets.Text(searchHolder, "GameFontDisableSmall", "muted")
-	searchPlaceholder:SetPoint("LEFT", 6, 0)
+	searchPlaceholder:SetPoint("LEFT", SEARCH_TEXT_LEFT, 0)
 	searchPlaceholder:SetText("Search")
 
 	searchBox:SetScript("OnTextChanged", function()
@@ -469,19 +421,12 @@ local function StartWhisper(text)
 end
 
 local function CreateNewChatButton(parent)
-	newChatButton = ns.Widgets.TextButton(parent, "+", "GameFontHighlightLarge")
-	newChatButton:SetSize(NEW_CHAT_SIZE, NEW_CHAT_SIZE)
+	newChatButton = ns.Widgets.IconButton(parent, "plus", NEW_CHAT_SIZE, 15, "New whisper")
 	newChatButton:SetPoint("TOPRIGHT", -8, -8)
-	ns.Widgets.Fill(newChatButton, "selected")
+	ns.Widgets.RoundedFill(newChatButton, "selected"):SetAllPoints()
 	newChatButton:SetScript("OnClick", function()
 		ns.Prompt.AskText("Who do you want to whisper? Enter their full name.", "", StartWhisper, "Start")
 	end)
-	newChatButton:HookScript("OnEnter", function(self)
-		GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
-		GameTooltip:SetText("New whisper")
-		GameTooltip:Show()
-	end)
-	newChatButton:HookScript("OnLeave", function() GameTooltip:Hide() end)
 end
 
 function Sidebar.Create(parent)

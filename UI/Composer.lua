@@ -12,9 +12,11 @@ local REASON_TEXT = {
 	unavailable = "This conversation can't receive messages right now.",
 }
 
-local FOCUS_LINE_HEIGHT = 2
+local FIELD_SIDE = 14
+local FIELD_TOP = 8
+local FIELD_BOTTOM = 12
 
-local box, placeholder, focusLine
+local box, placeholder, fieldBorder
 
 local function UpdatePlaceholder()
 	placeholder:SetShown(box:GetText() == "" and not box:HasFocus())
@@ -23,7 +25,7 @@ end
 -- In a game the same keys cast spells, so typing must be obvious at a glance.
 local function UpdateFocus()
 	UpdatePlaceholder()
-	focusLine:SetShown(box:HasFocus())
+	fieldBorder:SetShown(box:HasFocus())
 end
 
 local function OnTextChanged(_, userInput)
@@ -50,10 +52,10 @@ local function OnEnterPressed(self)
 	end
 end
 
-local function CreateEmojiButton(parent)
+local function CreateEmojiButton(parent, field)
 	local button = CreateFrame("Button", nil, parent)
 	button:SetSize(22, 22)
-	button:SetPoint("RIGHT", -14, 0)
+	button:SetPoint("RIGHT", field, "RIGHT", -8, 0)
 	local icon = button:CreateTexture(nil, "ARTWORK")
 	icon:SetAllPoints()
 	icon:SetTexture(ns.Emoji.ATLAS)
@@ -65,12 +67,22 @@ local function CreateEmojiButton(parent)
 end
 
 function Composer.Create(parent)
+	-- The gold shows around the field's edge only while typing.
+	fieldBorder = ns.Widgets.RoundedFill(parent, "accent", "BORDER")
+	fieldBorder:SetPoint("TOPLEFT", FIELD_SIDE, -FIELD_TOP)
+	fieldBorder:SetPoint("BOTTOMRIGHT", -FIELD_SIDE, FIELD_BOTTOM)
+	fieldBorder:Hide()
+
+	local field = ns.Widgets.RoundedFill(parent, "fieldSolid", "ARTWORK")
+	field:SetPoint("TOPLEFT", fieldBorder, "TOPLEFT", 1, -1)
+	field:SetPoint("BOTTOMRIGHT", fieldBorder, "BOTTOMRIGHT", -1, 1)
+
 	box = CreateFrame("EditBox", nil, parent)
-	box:SetPoint("TOPLEFT", 12, 0)
-	box:SetPoint("BOTTOMRIGHT", -46, 0)
+	box:SetPoint("TOPLEFT", field, "TOPLEFT", 12, 0)
+	box:SetPoint("BOTTOMRIGHT", field, "BOTTOMRIGHT", -38, 0)
 	box:SetFontObject(HangoutMessageFont)
 	box:SetTextColor(ns.Theme.Color("text"))
-	CreateEmojiButton(parent)
+	CreateEmojiButton(parent, field)
 	box:SetAutoFocus(false)
 	box:SetMaxBytes(MAX_TOTAL_BYTES)
 
@@ -79,12 +91,6 @@ function Composer.Create(parent)
 	box:SetScript("OnTextChanged", OnTextChanged)
 	box:SetScript("OnEditFocusGained", UpdateFocus)
 	box:SetScript("OnEditFocusLost", UpdateFocus)
-
-	focusLine = ns.Widgets.Solid(parent, "accent", "OVERLAY")
-	focusLine:SetPoint("TOPLEFT")
-	focusLine:SetPoint("TOPRIGHT")
-	focusLine:SetHeight(FOCUS_LINE_HEIGHT)
-	focusLine:Hide()
 
 	placeholder = ns.Widgets.Text(box, "HangoutMessageFont", "muted")
 	placeholder:SetPoint("LEFT")
@@ -106,7 +112,8 @@ local function UpdateHint()
 	elseif ns.selectedKey == ns.Capture.LOCKED_KEY then
 		placeholder:SetText("Use normal chat to reply to these messages.")
 	else
-		placeholder:SetText("Message...")
+		local conv = ns.Store.Get(ns.selectedKey)
+		placeholder:SetText("Message " .. (conv and ns.Store.LabelFor(ns.selectedKey, conv) or "..."))
 	end
 end
 

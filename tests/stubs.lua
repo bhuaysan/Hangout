@@ -73,7 +73,7 @@ function stubs.Install()
 	}
 	_G.BNET_CLIENT_WOW = "WoW"
 	_G.WOW_PROJECT_ID = 1
-	_G.Enum = { SendAddonMessageResult = { Success = 0 } }
+	_G.Enum = { SendAddonMessageResult = { Success = 0 }, UITextureSliceMode = { Stretched = 0 } }
 	_G.UnitInParty = function() return not stubs.allStrangers end
 	_G.UnitInRaid = function() return false end
 	_G.IsGuildMember = function() return false end
@@ -168,6 +168,7 @@ function stubs.Install()
 	}
 	_G.RAID_CLASS_COLORS = { SHAMAN = { r = 0, g = 0.44, b = 0.87 } }
 	_G.CLASS_ICON_TCOORDS = { SHAMAN = { 0.25, 0.5, 0.25, 0.5 } }
+	_G.LOCALIZED_CLASS_NAMES_MALE = { SHAMAN = "Schamane" }
 	_G.SlashCmdList = {}
 	_G.HangoutDB = nil
 	_G.CreateFrame = function()
