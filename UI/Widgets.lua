@@ -25,8 +25,8 @@ local ICON_ATLAS = "Interface\\AddOns\\Hangout\\Media\\icons.png"
 local ICON_COLUMNS = 4
 local ICON_NAMES = {
 	"search", "plus", "collapse", "expand",
-	"close", "gear", "moon", "pin",
-	"mute", "hash", "guild", "smile",
+	"close", "gear", "pin", "mute",
+	"hash", "guild", "smile",
 }
 local STATUS_ICON = {
 	[true] = "Interface\\FriendsFrame\\StatusIcon-Online",
