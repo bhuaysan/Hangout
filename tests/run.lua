@@ -1294,8 +1294,8 @@ Test("a class crest shows only for a known class", function()
 	}
 	Equal(ns.Widgets.SetClassCrest(texture, "SHAMAN"), true)
 	Equal(texture.shown, true)
-	Equal(texture.left, 0.25)
-	assert(texture.path:find("UI%-Classes%-Circles"), "uses the class circles texture")
+	assert(texture.left > 0.25 and texture.left < 0.3, "trims the icon's bevel")
+	assert(texture.path:find("UI%-CharacterCreate%-Classes"), "uses the square class icons")
 
 	Equal(ns.Widgets.SetClassCrest(texture, nil), false)
 	Equal(texture.shown, false)

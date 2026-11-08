@@ -6,9 +6,9 @@ ns.Widgets = Widgets
 -- Everything colored from a theme token, so a theme change can repaint it.
 local painted = {}
 
-local CREST_TEXTURE = "Interface\\TargetingFrame\\UI-Classes-Circles"
-local RING_TEXTURE = "Interface\\AddOns\\Hangout\\Media\\ring.png"
-local RING_EXTRA_SIZE = 3
+local CREST_TEXTURE = "Interface\\Glues\\CharacterCreate\\UI-CharacterCreate-Classes"
+local CREST_CROP = 0.07 -- trims the bevel off the game's square icons
+local CREST_OUTLINE_EXTRA = 2
 local SCROLL_BAR_ALPHA = 0.5
 local MEDIA = "Interface\\AddOns\\Hangout\\Media\\"
 -- The whole shape is rounded unless a panel only touches some window corners.
@@ -199,31 +199,38 @@ function Widgets.Border(frame, token)
 	Widgets.RoundedFill(frame, token, "OVERLAY", "outline"):SetAllPoints()
 end
 
--- A class crest texture with a themed ring around it. The caller anchors the
+-- A class crest texture with rounded corners and a thin themed outline. The caller anchors the
 -- returned texture and fills it with SetClassCrest.
 function Widgets.ClassCrest(frame, size)
 	local crest = frame:CreateTexture(nil, "ARTWORK")
 	crest:SetSize(size, size)
 
-	local ring = frame:CreateTexture(nil, "OVERLAY", nil, 0)
-	ring:SetTexture(RING_TEXTURE)
-	ring:SetSize(size + RING_EXTRA_SIZE, size + RING_EXTRA_SIZE)
-	ring:SetPoint("CENTER", crest)
-	Track(ring, "crestRing", false, true)
+	-- Rounds the square icon to match the other symbols.
+	local mask = frame:CreateMaskTexture()
+	mask:SetTexture(ROUNDED_SHAPES.all, "CLAMPTOBLACKADDITIVE", "CLAMPTOBLACKADDITIVE")
+	mask:SetAllPoints(crest)
+	crest:AddMaskTexture(mask)
 
-	crest.ring = ring
+	local outline = Widgets.RoundedFill(frame, "crestRing", "OVERLAY", "outline")
+	outline:SetSize(size + CREST_OUTLINE_EXTRA, size + CREST_OUTLINE_EXTRA)
+	outline:SetPoint("CENTER", crest)
+
+	crest.ring = outline
 	return crest
 end
 
--- Shows a class's round crest on a texture, or hides the texture if the class
+-- Shows a class's crest on a texture, or hides the texture if the class
 -- isn't known. Returns whether a crest is showing.
 function Widgets.SetClassCrest(texture, classToken)
 	local coords = classToken and CLASS_ICON_TCOORDS[classToken]
 	texture:SetShown(coords ~= nil)
 	if texture.ring then texture.ring:SetShown(coords ~= nil) end
 	if coords then
+		local left, right, top, bottom = unpack(coords)
+		local cropX = (right - left) * CREST_CROP
+		local cropY = (bottom - top) * CREST_CROP
 		texture:SetTexture(CREST_TEXTURE)
-		texture:SetTexCoord(unpack(coords))
+		texture:SetTexCoord(left + cropX, right - cropX, top + cropY, bottom - cropY)
 	end
 	return coords ~= nil
 end
