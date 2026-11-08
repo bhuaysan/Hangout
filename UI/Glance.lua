@@ -94,7 +94,7 @@ local function Create()
 	RestorePosition()
 
 	ns.Widgets.RoundedFill(frame, "glance"):SetAllPoints()
-	ns.Widgets.Border(frame, "frameEdge")
+	ns.Widgets.Border(frame, "edge")
 
 	for index = 1, MAX_LINES do
 		rows[index] = CreateRow(index)

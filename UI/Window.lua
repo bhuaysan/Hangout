@@ -116,7 +116,7 @@ local function CreateFrameEdge()
 	local edge = CreateFrame("Frame", nil, frame)
 	edge:SetAllPoints()
 	edge:SetFrameLevel(frame:GetFrameLevel() + EDGE_LEVEL_OFFSET)
-	ns.Widgets.Border(edge, "frameEdge")
+	ns.Widgets.Border(edge, "edge")
 end
 
 local function ToggleField(field)
