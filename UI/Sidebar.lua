@@ -223,10 +223,9 @@ local function BuildRow(frame)
 	frame.selected = ns.Widgets.Fill(frame, "selected")
 	frame.selected:Hide()
 
-	frame.crest = frame:CreateTexture(nil, "ARTWORK")
-	frame.crest:SetSize(CREST_SIZE, CREST_SIZE)
+	frame.crest = ns.Widgets.ClassCrest(frame, CREST_SIZE)
 
-	frame.status = frame:CreateTexture(nil, "OVERLAY")
+	frame.status = frame:CreateTexture(nil, "OVERLAY", nil, 1) -- above the crest's ring
 
 	frame.text = ns.Widgets.Text(frame, "GameFontHighlight", "text")
 	frame.text:SetWordWrap(false)

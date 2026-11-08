@@ -1079,6 +1079,30 @@ Test("the window edge follows the accent color", function()
 	assert(a > 0 and a < 1, "the edge stays subtle")
 end)
 
+Test("a crest's ring shows and hides with it", function()
+	local ns = Boot()
+	_G.CLASS_ICON_TCOORDS = { SHAMAN = { 0.25, 0.5, 0.25, 0.5 } }
+	local ringShown
+	local crest = {
+		SetShown = function() end, SetTexture = function() end, SetTexCoord = function() end,
+		ring = { SetShown = function(_, shown) ringShown = shown end },
+	}
+	ns.Widgets.SetClassCrest(crest, "SHAMAN")
+	Equal(ringShown, true)
+	ns.Widgets.SetClassCrest(crest, nil)
+	Equal(ringShown, false)
+end)
+
+Test("the crest ring follows the accent color", function()
+	local ns = Boot()
+	ns.Theme.SetCustom("accent", 0, 1, 0)
+	local r, g, b, a = ns.Theme.Color("crestRing")
+	Equal(r, 0)
+	Equal(g, 1)
+	Equal(b, 0)
+	assert(a > 0 and a <= 1)
+end)
+
 Test("a class crest shows only for a known class", function()
 	local ns = Boot()
 	_G.CLASS_ICON_TCOORDS = { SHAMAN = { 0.25, 0.5, 0.25, 0.5 } }
@@ -1094,6 +1118,7 @@ Test("a class crest shows only for a known class", function()
 
 	Equal(ns.Widgets.SetClassCrest(texture, nil), false)
 	Equal(texture.shown, false)
+	Equal(texture.ring, nil, "a bare texture needs no ring")
 	Equal(ns.Widgets.SetClassCrest(texture, "NOT_A_CLASS"), false)
 end)
 

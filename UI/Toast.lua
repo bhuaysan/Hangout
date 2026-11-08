@@ -66,8 +66,7 @@ local function Create()
 	bar:SetPoint("BOTTOMLEFT")
 	bar:SetWidth(3)
 
-	crest = frame:CreateTexture(nil, "ARTWORK")
-	crest:SetSize(CREST_SIZE, CREST_SIZE)
+	crest = ns.Widgets.ClassCrest(frame, CREST_SIZE)
 	crest:SetPoint("LEFT", TEXT_LEFT, 0)
 
 	title = ns.Widgets.Text(frame, "GameFontNormal", "text")

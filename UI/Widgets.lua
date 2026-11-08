@@ -7,17 +7,21 @@ ns.Widgets = Widgets
 local painted = {}
 
 local CREST_TEXTURE = "Interface\\TargetingFrame\\UI-Classes-Circles"
+local RING_TEXTURE = "Interface\\AddOns\\Hangout\\Media\\ring.png"
+local RING_EXTRA_SIZE = 4
 
 local function PaintRegion(entry)
 	if entry.isText then
 		entry.region:SetTextColor(ns.Theme.Color(entry.token))
+	elseif entry.isTint then
+		entry.region:SetVertexColor(ns.Theme.Color(entry.token))
 	else
 		entry.region:SetColorTexture(ns.Theme.Color(entry.token))
 	end
 end
 
-local function Track(region, token, isText)
-	local entry = { region = region, token = token, isText = isText }
+local function Track(region, token, isText, isTint)
+	local entry = { region = region, token = token, isText = isText, isTint = isTint }
 	painted[#painted + 1] = entry
 	PaintRegion(entry)
 end
@@ -72,11 +76,28 @@ function Widgets.Border(frame, token)
 	right:SetWidth(1)
 end
 
+-- A class crest texture with a themed ring around it. The caller anchors the
+-- returned texture and fills it with SetClassCrest.
+function Widgets.ClassCrest(frame, size)
+	local crest = frame:CreateTexture(nil, "ARTWORK")
+	crest:SetSize(size, size)
+
+	local ring = frame:CreateTexture(nil, "OVERLAY", nil, 0)
+	ring:SetTexture(RING_TEXTURE)
+	ring:SetSize(size + RING_EXTRA_SIZE, size + RING_EXTRA_SIZE)
+	ring:SetPoint("CENTER", crest)
+	Track(ring, "crestRing", false, true)
+
+	crest.ring = ring
+	return crest
+end
+
 -- Shows a class's round crest on a texture, or hides the texture if the class
 -- isn't known. Returns whether a crest is showing.
 function Widgets.SetClassCrest(texture, classToken)
 	local coords = classToken and CLASS_ICON_TCOORDS[classToken]
 	texture:SetShown(coords ~= nil)
+	if texture.ring then texture.ring:SetShown(coords ~= nil) end
 	if coords then
 		texture:SetTexture(CREST_TEXTURE)
 		texture:SetTexCoord(unpack(coords))

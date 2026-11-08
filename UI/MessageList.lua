@@ -210,8 +210,7 @@ local function OnRowLeave(self)
 end
 
 local function BuildRow(frame)
-	frame.crest = frame:CreateTexture(nil, "ARTWORK")
-	frame.crest:SetSize(CREST_SIZE, CREST_SIZE)
+	frame.crest = ns.Widgets.ClassCrest(frame, CREST_SIZE)
 	frame.crest:SetPoint("TOPLEFT", SIDE_PADDING, -4)
 
 	frame.sender = ns.Widgets.Text(frame, "GameFontNormal", "text")
