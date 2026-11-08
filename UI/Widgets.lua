@@ -8,7 +8,7 @@ local painted = {}
 
 local CREST_TEXTURE = "Interface\\TargetingFrame\\UI-Classes-Circles"
 local RING_TEXTURE = "Interface\\AddOns\\Hangout\\Media\\ring.png"
-local RING_EXTRA_SIZE = 4
+local RING_EXTRA_SIZE = 3
 local SCROLL_BAR_ALPHA = 0.5
 local MEDIA = "Interface\\AddOns\\Hangout\\Media\\"
 -- The whole shape is rounded unless a panel only touches some window corners.

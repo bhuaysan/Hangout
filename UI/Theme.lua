@@ -18,7 +18,7 @@ Theme.MIN_OPACITY = 70
 
 local MIN_NAME_CONTRAST = 4.5
 local NAME_MIX_STEP = 0.05
-local CREST_RING_ALPHA = 0.75
+local CREST_RING_ALPHA = 0.55
 local GLANCE_ALPHA = 0.82
 local MY_BUBBLE_ALPHA = 0.24
 local MY_BUBBLE_HOVER_ALPHA = 0.34
@@ -117,7 +117,7 @@ local function BuildTokens()
 	}
 	tokens.popup = { tokens.sidebar[1], tokens.sidebar[2], tokens.sidebar[3], 1 }
 	tokens.glance = { tokens.sidebar[1], tokens.sidebar[2], tokens.sidebar[3], GLANCE_ALPHA }
-	tokens.crestRing = { tokens.accent[1], tokens.accent[2], tokens.accent[3], CREST_RING_ALPHA }
+	tokens.crestRing = { tokens.muted[1], tokens.muted[2], tokens.muted[3], CREST_RING_ALPHA }
 	tokens.bubbleMine = { tokens.accent[1], tokens.accent[2], tokens.accent[3], MY_BUBBLE_ALPHA }
 	tokens.bubbleMineHover = { tokens.accent[1], tokens.accent[2], tokens.accent[3], MY_BUBBLE_HOVER_ALPHA }
 	tokens.bubbleTheirsHover = { tokens.selected[1], tokens.selected[2], tokens.selected[3], THEIR_BUBBLE_HOVER_ALPHA }
