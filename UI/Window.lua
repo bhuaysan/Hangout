@@ -3,10 +3,10 @@ local _, ns = ...
 local Window = {}
 ns.Window = Window
 
-local DEFAULT_WIDTH, DEFAULT_HEIGHT = 680, 440
-local MIN_WIDTH, MIN_HEIGHT = 440, 260
-local SIDEBAR_WIDTH = 190
-local SIDEBAR_COLLAPSED_WIDTH = 48
+local DEFAULT_WIDTH, DEFAULT_HEIGHT = 730, 440
+local MIN_WIDTH, MIN_HEIGHT = 520, 260
+local SIDEBAR_WIDTH = 240
+local SIDEBAR_COLLAPSED_WIDTH = 56
 local HEADER_HEIGHT = 40
 local COMPOSER_HEIGHT = 40
 local BANNER_HEIGHT = 24
@@ -54,7 +54,7 @@ end
 local function RestoreGeometry()
 	local saved = ns.Get("window")
 	if saved then
-		frame:SetSize(saved.width, saved.height)
+		frame:SetSize(math.max(MIN_WIDTH, saved.width), math.max(MIN_HEIGHT, saved.height))
 		frame:SetPoint(saved.point, UIParent, saved.relativePoint, saved.x, saved.y)
 	else
 		frame:SetSize(DEFAULT_WIDTH, DEFAULT_HEIGHT)

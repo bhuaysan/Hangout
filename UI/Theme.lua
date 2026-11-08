@@ -30,6 +30,7 @@ local DARK_OVERLAYS = {
 	selected = { 1, 1, 1, 0.10 },
 	divider = { 1, 1, 1, 0.07 },
 	outline = { 1, 1, 1, 0.30 },
+	dock = { 0, 0, 0, 0.25 },
 	notice = { 0.62, 0.42, 0.08, 0.45 },
 }
 
@@ -38,6 +39,7 @@ local LIGHT_OVERLAYS = {
 	selected = { 0, 0, 0, 0.10 },
 	divider = { 0, 0, 0, 0.12 },
 	outline = { 0, 0, 0, 0.35 },
+	dock = { 0, 0, 0, 0.07 },
 	notice = { 0.95, 0.70, 0.20, 0.55 },
 }
 

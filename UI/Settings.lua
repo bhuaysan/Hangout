@@ -337,7 +337,7 @@ local function SoundChoice(text, category)
 end
 
 local function BuildNotifications()
-	Toggle("Do Not Disturb", "dnd", function() ns.Launcher.UpdateDndIcon() end)
+	Toggle("Do Not Disturb", "dnd", function() ns.Launcher.SetDnd(ns.Get("dnd")) end)
 	SoundChoice("Whisper sound", "Whisper")
 	SoundChoice("Group sound", "Group")
 	SoundChoice("Mention sound", "Mention")
@@ -459,6 +459,10 @@ function SettingsUI.Show()
 	RefreshAll()
 	panel:Show()
 end
+
+ns.On("DND_CHANGED", function()
+	if panel then RefreshAll() end
+end)
 
 function SettingsUI.Hide()
 	if panel then panel:Hide() end

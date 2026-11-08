@@ -17,8 +17,6 @@ local REACTION_ROW_HEIGHT = 20
 local FALLBACK_LINE_HEIGHT = 15
 local CONTEXT_ROWS = 20
 
-local BUBBLE_TEXTURE = "Interface\\AddOns\\Hangout\\Media\\bubble.png"
-local BUBBLE_SLICE_MARGIN = 8
 local BUBBLE_PAD_X = 10
 local BUBBLE_PAD_Y = 6
 local BUBBLE_MAX_SHARE = 0.72
@@ -283,10 +281,7 @@ end
 local function BuildRow(frame)
 	frame.crest = ns.Widgets.ClassCrest(frame, CREST_SIZE)
 
-	frame.bubble = frame:CreateTexture(nil, "BORDER")
-	frame.bubble:SetTexture(BUBBLE_TEXTURE)
-	frame.bubble:SetTextureSliceMargins(BUBBLE_SLICE_MARGIN, BUBBLE_SLICE_MARGIN, BUBBLE_SLICE_MARGIN, BUBBLE_SLICE_MARGIN)
-	frame.bubble:SetTextureSliceMode(Enum.UITextureSliceMode.Stretched)
+	frame.bubble = ns.Widgets.Rounded(frame, "BORDER")
 
 	frame.sender = ns.Widgets.Text(frame, "GameFontNormal", "text")
 	frame.sender:SetPoint("TOPLEFT", TEXT_LEFT, -4)

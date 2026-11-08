@@ -144,6 +144,28 @@ function Store.GetLive(key)
 	return ns.session.live[key]
 end
 
+-- What a sidebar row shows: the newest message's text and its time, or nil for
+-- a chat with no messages. Locked text is secret, so it is never read here.
+function Store.LastActivity(key, conv)
+	local live = Store.GetLive(key)
+	local newestLocked = live and live[#live]
+	local messages = conv.m
+	local last = messages and messages[#messages]
+	if newestLocked and (not last or newestLocked.t >= last.t) then
+		return "Restricted message", newestLocked.t
+	end
+	if not last then return nil end
+
+	local prefix = ""
+	if last.o == 1 then
+		prefix = "You: "
+	elseif last.s then
+		local sender = Store.SenderLabel(last.s)
+		prefix = (sender:match("^%S+") or sender) .. ": "
+	end
+	return prefix .. ns.Emoji.Display(last.x), last.t
+end
+
 -- Replaces the locked elements of every conversation after recovery.
 -- Recovered messages were counted as unread when they were stored, so only
 -- lines that are still locked keep a restricted unread count.

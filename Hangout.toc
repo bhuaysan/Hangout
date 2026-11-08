@@ -26,6 +26,7 @@ UI\Widgets.lua
 UI\Prompt.lua
 UI\MessageList.lua
 UI\Sidebar.lua
+UI\ProfileBar.lua
 UI\EmojiPicker.lua
 UI\Composer.lua
 UI\Toast.lua

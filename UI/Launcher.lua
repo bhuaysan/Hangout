@@ -45,9 +45,10 @@ function Launcher.UpdateVisibility()
 	if button then button:SetShown(ns.Get("showMinimap")) end
 end
 
-local function SetDnd(enabled)
+function Launcher.SetDnd(enabled)
 	ns.Set("dnd", enabled)
 	Launcher.UpdateDndIcon()
+	ns.Fire("DND_CHANGED")
 end
 
 local function ShowMenu(owner)
@@ -55,7 +56,7 @@ local function ShowMenu(owner)
 		root:CreateTitle("Hangout")
 		root:CreateCheckbox("Do Not Disturb",
 			function() return ns.Get("dnd") end,
-			function() SetDnd(not ns.Get("dnd")) end)
+			function() Launcher.SetDnd(not ns.Get("dnd")) end)
 		root:CreateButton("Settings", function() ns.Window.OpenSettings() end)
 	end)
 end
@@ -194,7 +195,7 @@ SLASH_HANGOUT1 = "/hangout"
 SlashCmdList.HANGOUT = function(input)
 	local command, argument = input:match("^(%S*)%s*(.-)$")
 	if command == "dnd" then
-		SetDnd(not ns.Get("dnd"))
+		Launcher.SetDnd(not ns.Get("dnd"))
 		ns.Print("Do Not Disturb is " .. (ns.Get("dnd") and "on" or "off") .. ".")
 	elseif command == "keyword" then
 		HandleKeyword(argument)

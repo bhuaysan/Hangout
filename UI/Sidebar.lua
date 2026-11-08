@@ -5,14 +5,22 @@ ns.Sidebar = Sidebar
 
 local HEADER_HEIGHT = 26
 local COLLAPSED_HEADER_HEIGHT = 8
-local ROW_HEIGHT = 28
+local ROW_HEIGHT = 48
 local RESULT_ROW_HEIGHT = 42
 local SEARCH_HEIGHT = 34
 local NEW_CHAT_SIZE = 22
-local CREST_LEFT = 8
-local CREST_SIZE = 20
-local PLAIN_TEXT_LEFT = 12
-local PERSON_TEXT_LEFT = CREST_LEFT + CREST_SIZE + 6
+local CREST_LEFT = 14
+local CREST_SIZE = 30
+local ROW_TEXT_LEFT = CREST_LEFT + CREST_SIZE + 10
+local HEADER_LEFT = 14
+local ROW_INSET = 8
+local COLLAPSED_ROW_INSET = 4
+local LIST_RIGHT_GAP = 8
+local ROOM_ICON_SIZE = 16
+local BADGE_HEIGHT = 16
+local BADGE_BASE_WIDTH = 10
+local BADGE_DIGIT_WIDTH = 6
+local BADGE_ROOM = 30
 local REFRESH_DELAY = 0.05
 local SEARCH_DELAY = 0.25
 local MIN_SEARCH_LENGTH = 2
@@ -33,10 +41,13 @@ local collapsed = false
 local searchResults = {}
 
 local function RowFor(entry)
+	local preview, lastTime = ns.Store.LastActivity(entry.key, entry.conv)
 	return {
 		kind = "row",
 		key = entry.key,
 		label = ns.Store.LabelFor(entry.key, entry.conv),
+		preview = preview or "No messages yet",
+		time = lastTime and ns.Util.ShortTime(lastTime, GetServerTime()) or "",
 		class = entry.conv.class,
 		muted = entry.conv.mute,
 		note = entry.conv.note,
@@ -218,25 +229,36 @@ local function OnRowLeave(self)
 end
 
 local function BuildRow(frame)
-	frame.hover = ns.Widgets.Fill(frame, "hover")
+	frame.hover = ns.Widgets.RoundedFill(frame, "hover")
 	frame.hover:Hide()
-	frame.selected = ns.Widgets.Fill(frame, "selected")
+	frame.selected = ns.Widgets.RoundedFill(frame, "selected")
 	frame.selected:Hide()
 
 	frame.crest = ns.Widgets.ClassCrest(frame, CREST_SIZE)
+
+	frame.slot = ns.Widgets.RoundedFill(frame, "selected", "BORDER")
+	frame.slot:SetSize(CREST_SIZE, CREST_SIZE)
+	frame.slotIcon = ns.Widgets.Icon(frame, "hash", ROOM_ICON_SIZE, "muted")
+	frame.slotIcon:SetPoint("CENTER", frame.slot)
+	frame.slotLetter = ns.Widgets.Text(frame, "GameFontHighlight", "muted")
+	frame.slotLetter:SetPoint("CENTER", frame.slot)
 
 	frame.status = frame:CreateTexture(nil, "OVERLAY", nil, 1) -- above the crest's ring
 
 	frame.text = ns.Widgets.Text(frame, "GameFontHighlight", "text")
 	frame.text:SetWordWrap(false)
 
+	frame.time = ns.Widgets.Text(frame, "GameFontDisableSmall", "muted")
+	frame.time:SetJustifyH("RIGHT")
+
 	frame.snippet = ns.Widgets.Text(frame, "GameFontDisableSmall", "muted")
-	frame.snippet:SetPoint("TOPLEFT", 12, -23)
-	frame.snippet:SetPoint("TOPRIGHT", -8, -23)
 	frame.snippet:SetWordWrap(false)
 
-	frame.badge = ns.Widgets.Text(frame, "GameFontNormalSmall", "accent")
-	frame.badge:SetJustifyH("RIGHT")
+	frame.badgePill = ns.Widgets.RoundedFill(frame, "accent", "ARTWORK")
+	frame.badgePill:SetHeight(BADGE_HEIGHT)
+	frame.badge = ns.Widgets.Text(frame, "GameFontNormalSmall", "panel")
+	frame.badge:SetPoint("CENTER", frame.badgePill)
+	frame.badge:SetJustifyH("CENTER")
 
 	frame:RegisterForClicks("LeftButtonUp", "RightButtonUp")
 	frame:SetScript("OnClick", OnRowClick)
@@ -244,57 +266,95 @@ local function BuildRow(frame)
 	frame:SetScript("OnLeave", OnRowLeave)
 end
 
--- Shows the class crest with the online dot on its corner, or the dot alone if
--- the class isn't known. Returns whether a crest is showing.
+local function IconForChat(key)
+	return key:sub(1, 1) == "C" and "hash" or "guild"
+end
+
+local function IsPersonKey(key)
+	local prefix = key:sub(1, 1)
+	return prefix == "W" or prefix == "B" or prefix == "L"
+end
+
+local function AnchorToIconColumn(region)
+	region:ClearAllPoints()
+	if collapsed then
+		region:SetPoint("CENTER")
+	else
+		region:SetPoint("LEFT", CREST_LEFT, 0)
+	end
+end
+
+-- Every row gets something in the icon column: a crest when the class is known,
+-- otherwise a first letter for a person or an icon for a channel or group.
 local function LayoutIcons(frame, element)
 	local isRow = element.kind == "row"
 	local hasCrest = ns.Widgets.SetClassCrest(frame.crest, isRow and element.class or nil)
 	frame.crest:SetDesaturated(hasCrest and element.muted and true or false)
-	frame.crest:ClearAllPoints()
-	if collapsed then
-		frame.crest:SetPoint("CENTER")
-	else
-		frame.crest:SetPoint("LEFT", CREST_LEFT, 0)
+	AnchorToIconColumn(frame.crest)
+
+	local hasSlot = isRow and not hasCrest
+	local isPerson = hasSlot and IsPersonKey(element.key)
+	frame.slot:SetShown(hasSlot)
+	frame.slotIcon:SetShown(hasSlot and not isPerson)
+	frame.slotLetter:SetShown(isPerson)
+	if hasSlot then
+		AnchorToIconColumn(frame.slot)
+		if isPerson then
+			frame.slotLetter:SetText(ns.Util.FirstCharacter(element.label))
+		else
+			ns.Widgets.SetIcon(frame.slotIcon, IconForChat(element.key))
+		end
 	end
 
-	local hasStatus = isRow and element.presence ~= nil and not collapsed
+	local hasStatus = isRow and element.presence ~= nil
 	frame.status:SetShown(hasStatus)
 	if hasStatus then
 		frame.status:SetTexture(STATUS_ICON[element.presence])
+		frame.status:SetSize(14, 14)
 		frame.status:ClearAllPoints()
-		if hasCrest then
-			frame.status:SetSize(12, 12)
-			frame.status:SetPoint("CENTER", frame.crest, "BOTTOMRIGHT", -2, 2)
-		else
-			frame.status:SetSize(14, 14)
-			frame.status:SetPoint("LEFT", CREST_LEFT + 3, 0)
-		end
+		frame.status:SetPoint("CENTER", hasCrest and frame.crest or frame.slot, "BOTTOMRIGHT", -2, 2)
 	end
-	return hasCrest
 end
 
--- People line up in one column whether or not their class is known yet.
-local function TextLeftFor(element)
-	local prefix = element.key and element.key:sub(1, 1)
-	return (prefix == "W" or prefix == "B") and PERSON_TEXT_LEFT or PLAIN_TEXT_LEFT
+local function LayoutHighlights(frame)
+	local inset = collapsed and COLLAPSED_ROW_INSET or ROW_INSET
+	local rightInset = collapsed and COLLAPSED_ROW_INSET or 0
+	for _, fill in ipairs({ frame.hover, frame.selected }) do
+		fill:ClearAllPoints()
+		fill:SetPoint("TOPLEFT", inset, -1)
+		fill:SetPoint("BOTTOMRIGHT", -rightInset, 1)
+	end
+end
+
+-- The name and time on top, the newest message underneath.
+local function LayoutChatRow(frame, element)
+	frame.time:SetPoint("TOPRIGHT", -8, -9)
+	frame.text:SetPoint("TOPLEFT", ROW_TEXT_LEFT, -8)
+	frame.text:SetPoint("TOPRIGHT", frame.time, "TOPLEFT", -6, 1)
+	frame.snippet:SetPoint("TOPLEFT", ROW_TEXT_LEFT, -27)
+	frame.snippet:SetPoint("TOPRIGHT", element.unread > 0 and -BADGE_ROOM or -8, -27)
+	frame.badgePill:SetPoint("TOPRIGHT", -8, -25)
 end
 
 local function LayoutText(frame, element)
 	frame.text:ClearAllPoints()
-	frame.badge:ClearAllPoints()
+	frame.time:ClearAllPoints()
+	frame.snippet:ClearAllPoints()
+	frame.badgePill:ClearAllPoints()
+	frame.text:SetJustifyH("LEFT")
 	if element.kind == "result" then
-		frame.text:SetPoint("TOPLEFT", 12, -6)
+		frame.text:SetPoint("TOPLEFT", 14, -6)
 		frame.text:SetPoint("TOPRIGHT", -8, -6)
-		frame.text:SetJustifyH("LEFT")
+		frame.snippet:SetPoint("TOPLEFT", 14, -23)
+		frame.snippet:SetPoint("TOPRIGHT", -8, -23)
+	elseif element.kind == "header" then
+		frame.text:SetPoint("LEFT", HEADER_LEFT, 0)
+		frame.text:SetPoint("RIGHT", -8, 0)
 	elseif collapsed then
 		frame.text:SetPoint("CENTER")
-		frame.text:SetJustifyH("CENTER")
-		frame.badge:SetPoint("TOPRIGHT", -2, -2)
+		frame.badgePill:SetPoint("TOPRIGHT", -2, -2)
 	else
-		frame.text:SetPoint("LEFT", TextLeftFor(element), 0)
-		frame.text:SetPoint("RIGHT", -30, 0)
-		frame.text:SetJustifyH("LEFT")
-		frame.badge:SetPoint("RIGHT", -8, 0)
+		LayoutChatRow(frame, element)
 	end
 end
 
@@ -307,12 +367,13 @@ local function InitRow(frame, element)
 	frame:EnableMouse((isRow or isResult) and not ns.Window.IsFaded())
 	frame.selected:SetShown(isRow and element.key == ns.selectedKey)
 	frame.hover:Hide()
-	local hasCrest = LayoutIcons(frame, element)
+	LayoutHighlights(frame)
+	LayoutIcons(frame, element)
 	LayoutText(frame, element)
 
 	local label = element.label
 	if collapsed and not isResult then
-		label = isRow and not hasCrest and ns.Util.FirstCharacter(label) or ""
+		label = ""
 	end
 	frame.text:SetText(label)
 	frame.text:SetFontObject((isRow or isResult) and "GameFontHighlight" or "GameFontDisableSmall")
@@ -325,13 +386,25 @@ local function InitRow(frame, element)
 		frame.text:SetTextColor(ns.Theme.Color("muted"))
 	end
 
-	frame.snippet:SetShown(isResult)
-	if isResult then frame.snippet:SetText(element.snippet) end
+	local showsPreview = isRow and not collapsed
+	frame.time:SetShown(showsPreview)
+	frame.snippet:SetShown(isResult or showsPreview)
+	if isResult then
+		frame.snippet:SetText(element.snippet)
+		frame.snippet:SetTextColor(ns.Theme.Color("muted"))
+	elseif showsPreview then
+		frame.time:SetText(element.time)
+		frame.snippet:SetText(element.preview)
+		frame.snippet:SetTextColor(ns.Theme.Color(element.unread > 0 and "text" or "muted"))
+	end
 
 	local unread = isRow and element.unread or 0
 	frame.badge:SetShown(unread > 0)
+	frame.badgePill:SetShown(unread > 0)
 	if unread > 0 then
-		frame.badge:SetText(ns.Util.BadgeText(unread))
+		local text = tostring(ns.Util.BadgeText(unread))
+		frame.badge:SetText(text)
+		frame.badgePill:SetWidth(BADGE_BASE_WIDTH + #text * BADGE_DIGIT_WIDTH)
 	end
 end
 
@@ -414,6 +487,7 @@ end
 function Sidebar.Create(parent)
 	CreateSearchBox(parent)
 	CreateNewChatButton(parent)
+	ns.ProfileBar.Create(parent)
 
 	local view = CreateScrollBoxListLinearView(4, 8, 0, 0, 0)
 	view:SetElementInitializer("Button", InitRow)
@@ -422,9 +496,9 @@ function Sidebar.Create(parent)
 	local scrollBar
 	scrollBox, scrollBar = ns.Widgets.ScrollList(parent, view)
 	scrollBar:SetPoint("TOPRIGHT", -2, -SEARCH_HEIGHT)
-	scrollBar:SetPoint("BOTTOMRIGHT", -2, 4)
+	scrollBar:SetPoint("BOTTOMRIGHT", -2, ns.ProfileBar.HEIGHT + 4)
 	scrollBox:SetPoint("TOPLEFT", 0, -SEARCH_HEIGHT)
-	scrollBox:SetPoint("BOTTOMRIGHT", -12, 0)
+	scrollBox:SetPoint("BOTTOMRIGHT", -LIST_RIGHT_GAP, ns.ProfileBar.HEIGHT)
 end
 
 function Sidebar.SetCollapsed(isCollapsed)
@@ -433,6 +507,8 @@ function Sidebar.SetCollapsed(isCollapsed)
 	newChatButton:SetShown(not collapsed)
 	if collapsed then searchBox:SetText("") end
 	scrollBox:SetPoint("TOPLEFT", 0, collapsed and 0 or -SEARCH_HEIGHT)
+	scrollBox:SetPoint("BOTTOMRIGHT", collapsed and 0 or -LIST_RIGHT_GAP, ns.ProfileBar.HEIGHT)
+	ns.ProfileBar.SetCollapsed(collapsed)
 	Sidebar.Refresh()
 end
 

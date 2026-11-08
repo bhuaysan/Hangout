@@ -21,6 +21,17 @@ function Util.DisplayName(name)
 	return (name:gsub("#%d+$", ""))
 end
 
+-- A compact "when" for lists: the time today, otherwise the day.
+function Util.ShortTime(timestamp, now)
+	if date("%Y-%m-%d", timestamp) == date("%Y-%m-%d", now) then
+		return date("%H:%M", timestamp)
+	end
+	if date("%Y-%m-%d", timestamp) == date("%Y-%m-%d", now - 86400) then
+		return "Yesterday"
+	end
+	return date("%b ", timestamp) .. tonumber(date("%d", timestamp))
+end
+
 function Util.Trim(text)
 	return (text:match("^%s*(.-)%s*$"))
 end

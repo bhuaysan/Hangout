@@ -10,6 +10,19 @@ local CREST_TEXTURE = "Interface\\TargetingFrame\\UI-Classes-Circles"
 local RING_TEXTURE = "Interface\\AddOns\\Hangout\\Media\\ring.png"
 local RING_EXTRA_SIZE = 4
 local SCROLL_BAR_ALPHA = 0.5
+local ROUNDED_TEXTURE = "Interface\\AddOns\\Hangout\\Media\\bubble.png"
+local ROUNDED_SLICE_MARGIN = 8
+local ICON_ATLAS = "Interface\\AddOns\\Hangout\\Media\\icons.png"
+local ICON_COLUMNS = 4
+local ICON_NAMES = {
+	"search", "plus", "collapse", "expand",
+	"close", "gear", "moon", "pin",
+	"mute", "hash", "guild", "smile",
+}
+local ICON_INDEX = {}
+for index, name in ipairs(ICON_NAMES) do
+	ICON_INDEX[name] = index
+end
 
 local function PaintRegion(entry)
 	if entry.isText then
@@ -25,6 +38,7 @@ local function Track(region, token, isText, isTint)
 	local entry = { region = region, token = token, isText = isText, isTint = isTint }
 	painted[#painted + 1] = entry
 	PaintRegion(entry)
+	return entry
 end
 
 function Widgets.Repaint()
@@ -51,6 +65,70 @@ function Widgets.Text(frame, fontObject, token)
 	Track(text, token, true)
 	text:SetJustifyH("LEFT")
 	return text
+end
+
+-- A rounded shape that stretches cleanly. Color it with SetVertexColor.
+function Widgets.Rounded(frame, layer)
+	local texture = frame:CreateTexture(nil, layer or "BACKGROUND")
+	texture:SetTexture(ROUNDED_TEXTURE)
+	texture:SetTextureSliceMargins(ROUNDED_SLICE_MARGIN, ROUNDED_SLICE_MARGIN, ROUNDED_SLICE_MARGIN, ROUNDED_SLICE_MARGIN)
+	texture:SetTextureSliceMode(Enum.UITextureSliceMode.Stretched)
+	return texture
+end
+
+-- A rounded shape in a theme color. The caller anchors it.
+function Widgets.RoundedFill(frame, token, layer)
+	local texture = Widgets.Rounded(frame, layer)
+	Track(texture, token, false, true)
+	return texture
+end
+
+-- Shows one icon from the addon's icon image on a texture.
+function Widgets.SetIcon(texture, name)
+	local index = ICON_INDEX[name] - 1
+	local column = index % ICON_COLUMNS
+	local row = math.floor(index / ICON_COLUMNS)
+	local cell = 1 / ICON_COLUMNS
+	texture:SetTexture(ICON_ATLAS)
+	texture:SetTexCoord(column * cell, (column + 1) * cell, row * cell, (row + 1) * cell)
+end
+
+-- A themed icon the caller anchors.
+function Widgets.Icon(frame, name, size, token, layer)
+	local texture = frame:CreateTexture(nil, layer or "ARTWORK")
+	texture:SetSize(size, size)
+	Widgets.SetIcon(texture, name)
+	local entry = Track(texture, token, false, true)
+	return texture, entry
+end
+
+-- An icon that lightens on hover and names itself in a tooltip.
+function Widgets.IconButton(parent, name, size, iconSize, tooltip)
+	local button = CreateFrame("Button", nil, parent)
+	button:SetSize(size, size)
+	local icon, entry = Widgets.Icon(button, name, iconSize, "muted")
+	icon:SetPoint("CENTER")
+	button.iconEntry = entry
+
+	button:SetScript("OnEnter", function(self)
+		if entry.token ~= "accent" then
+			icon:SetVertexColor(ns.Theme.Color("text"))
+		end
+		GameTooltip:SetOwner(self, "ANCHOR_TOP")
+		GameTooltip:SetText(tooltip)
+		GameTooltip:Show()
+	end)
+	button:SetScript("OnLeave", function()
+		PaintRegion(entry)
+		GameTooltip:Hide()
+	end)
+	return button
+end
+
+-- Turns an icon button gold while its setting is on.
+function Widgets.SetIconButtonActive(button, isActive)
+	button.iconEntry.token = isActive and "accent" or "muted"
+	PaintRegion(button.iconEntry)
 end
 
 -- A one-pixel themed line along each edge of a frame.

@@ -464,6 +464,53 @@ Test("day separators use plain words for recent days", function()
 	assert(label(noon - 86400 * 400, noon):find(", %d%d%d%d$"), "another year shows the year")
 end)
 
+Test("sidebar times are short and friendly", function()
+	local ns = Boot()
+	local noon = 86400 * 20000 + 43200
+	Equal(ns.Util.ShortTime(noon, noon), "12:00")
+	Equal(ns.Util.ShortTime(noon - 86400, noon), "Yesterday")
+	Equal(ns.Util.ShortTime(noon - 86400 * 3, noon), "Nov 8")
+end)
+
+Test("a sidebar row previews the newest message", function()
+	local ns = Boot()
+	Chat(ns, "CHAT_MSG_WHISPER", { text = "hello there", name = "Other Person" })
+	Equal(ns.Sidebar.BuildElements(ns.Store.List())[2].preview, "hello there")
+	Chat(ns, "CHAT_MSG_WHISPER_INFORM", { text = "hi back", name = "Other Person" })
+	Equal(ns.Sidebar.BuildElements(ns.Store.List())[2].preview, "You: hi back")
+end)
+
+Test("a group chat preview names who spoke, by first name", function()
+	local ns = Boot()
+	Chat(ns, "CHAT_MSG_GUILD", { text = "gz", name = "Other Person" })
+	local conv = ns.Store.List()[1]
+	Equal(ns.Store.LastActivity(conv.key, conv.conv), "Other: gz")
+end)
+
+Test("a chat with no messages says so", function()
+	local ns = Boot()
+	ns.Store.StartWhisper("New Friend")
+	Equal(ns.Sidebar.BuildElements(ns.Store.List())[2].preview, "No messages yet")
+end)
+
+Test("a locked message is never read for the preview", function()
+	local ns = Boot()
+	local conv = ns.Store.Ensure("W:Other Person", { name = "Other Person" })
+	ns.session.live["W:Other Person"] = { { t = 2000000, text = stubs.Secret(), sender = stubs.Secret() } }
+	local preview, time = ns.Store.LastActivity("W:Other Person", conv)
+	Equal(preview, "Restricted message")
+	Equal(time, 2000000)
+end)
+
+Test("Do Not Disturb announces every change", function()
+	local ns = Boot()
+	local changes = 0
+	ns.On("DND_CHANGED", function() changes = changes + 1 end)
+	ns.Launcher.SetDnd(true)
+	Equal(ns.Get("dnd"), true)
+	Equal(changes, 1)
+end)
+
 Test("a new day adds a separator and restarts grouping", function()
 	local ns = Boot()
 	local base = 86400 * 100
