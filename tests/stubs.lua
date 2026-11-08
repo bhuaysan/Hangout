@@ -161,6 +161,7 @@ function stubs.Install()
 		NewTimer = function() return { Cancel = function() end } end,
 	}
 	_G.RAID_CLASS_COLORS = { SHAMAN = { r = 0, g = 0.44, b = 0.87 } }
+	_G.CLASS_ICON_TCOORDS = { SHAMAN = { 0.25, 0.5, 0.25, 0.5 } }
 	_G.SlashCmdList = {}
 	_G.HangoutDB = nil
 	_G.CreateFrame = function()

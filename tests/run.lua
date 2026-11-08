@@ -1020,6 +1020,36 @@ Test("a class color that is already readable is left alone", function()
 	Equal(a, 1)
 end)
 
+Test("every theme's accent is readable on its own surfaces", function()
+	local ns = Boot()
+	for _, preset in ipairs(ns.Theme.PRESET_ORDER) do
+		ns.Theme.SetPreset(preset)
+		local r, g, b = ns.Theme.Color("accent")
+		for _, surface in ipairs({ "bg", "sidebar" }) do
+			local sr, sg, sb = ns.Theme.Color(surface)
+			assert(ContrastOf(r, g, b, sr, sg, sb) >= 4.5, preset .. " accent on " .. surface)
+		end
+	end
+end)
+
+Test("a class crest shows only for a known class", function()
+	local ns = Boot()
+	_G.CLASS_ICON_TCOORDS = { SHAMAN = { 0.25, 0.5, 0.25, 0.5 } }
+	local texture = {
+		SetShown = function(self, shown) self.shown = shown end,
+		SetTexture = function(self, path) self.path = path end,
+		SetTexCoord = function(self, left) self.left = left end,
+	}
+	Equal(ns.Widgets.SetClassCrest(texture, "SHAMAN"), true)
+	Equal(texture.shown, true)
+	Equal(texture.left, 0.25)
+	assert(texture.path:find("UI%-Classes%-Circles"), "uses the class circles texture")
+
+	Equal(ns.Widgets.SetClassCrest(texture, nil), false)
+	Equal(texture.shown, false)
+	Equal(ns.Widgets.SetClassCrest(texture, "NOT_A_CLASS"), false)
+end)
+
 Test("the selected row is accounted for when adjusting a name", function()
 	local ns = Boot()
 	_G.RAID_CLASS_COLORS = { SHAMAN = { r = 0, g = 0.44, b = 0.87 } }

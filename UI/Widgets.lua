@@ -6,6 +6,8 @@ ns.Widgets = Widgets
 -- Everything colored from a theme token, so a theme change can repaint it.
 local painted = {}
 
+local CREST_TEXTURE = "Interface\\TargetingFrame\\UI-Classes-Circles"
+
 local function PaintRegion(entry)
 	if entry.isText then
 		entry.region:SetTextColor(ns.Theme.Color(entry.token))
@@ -44,6 +46,18 @@ function Widgets.Text(frame, fontObject, token)
 	Track(text, token, true)
 	text:SetJustifyH("LEFT")
 	return text
+end
+
+-- Shows a class's round crest on a texture, or hides the texture if the class
+-- isn't known. Returns whether a crest is showing.
+function Widgets.SetClassCrest(texture, classToken)
+	local coords = classToken and CLASS_ICON_TCOORDS[classToken]
+	texture:SetShown(coords ~= nil)
+	if coords then
+		texture:SetTexture(CREST_TEXTURE)
+		texture:SetTexCoord(unpack(coords))
+	end
+	return coords ~= nil
 end
 
 -- A flat text button that lightens on hover.

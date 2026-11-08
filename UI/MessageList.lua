@@ -6,6 +6,8 @@ ns.MessageList = MessageList
 local PAGE_SIZE = 200
 local GROUP_WINDOW_SECONDS = 300
 local SIDE_PADDING = 12
+local CREST_SIZE = 26
+local TEXT_LEFT = SIDE_PADDING + CREST_SIZE + 8
 local HEADER_HEIGHT = 20
 local ROW_GAP = 4
 local LABEL_ROW_HEIGHT = 26
@@ -145,7 +147,7 @@ local function ExtentOf(_, element)
 	if element.kind ~= "message" then
 		return LABEL_ROW_HEIGHT
 	end
-	local width = scrollBox:GetWidth() - SIDE_PADDING * 2
+	local width = scrollBox:GetWidth() - TEXT_LEFT - SIDE_PADDING
 	return (element.head and HEADER_HEIGHT or 0) + BodyHeight(element, width) + ROW_GAP
 		+ (element.reactions and REACTION_ROW_HEIGHT or 0)
 end
@@ -208,8 +210,12 @@ local function OnRowLeave(self)
 end
 
 local function BuildRow(frame)
+	frame.crest = frame:CreateTexture(nil, "ARTWORK")
+	frame.crest:SetSize(CREST_SIZE, CREST_SIZE)
+	frame.crest:SetPoint("TOPLEFT", SIDE_PADDING, -4)
+
 	frame.sender = ns.Widgets.Text(frame, "GameFontNormal", "text")
-	frame.sender:SetPoint("TOPLEFT", SIDE_PADDING, -4)
+	frame.sender:SetPoint("TOPLEFT", TEXT_LEFT, -4)
 
 	frame.time = ns.Widgets.Text(frame, "GameFontDisableSmall", "muted")
 	frame.time:SetPoint("LEFT", frame.sender, "RIGHT", 8, 0)
@@ -247,6 +253,7 @@ local function InitRow(frame, element)
 	frame.body:SetShown(isMessage)
 	frame.sender:SetShown(isMessage and element.head)
 	frame.time:SetShown(isMessage and element.head)
+	ns.Widgets.SetClassCrest(frame.crest, isMessage and element.head and element.class or nil)
 	frame.label:SetShown(not isMessage)
 	frame.mentionBar:SetShown(isMessage and element.mention)
 	frame.highlight:SetShown(isMessage and element.id ~= nil and element.id == highlightId)
@@ -266,7 +273,7 @@ local function InitRow(frame, element)
 
 	local top = element.head and -HEADER_HEIGHT or 0
 	frame.body:ClearAllPoints()
-	frame.body:SetPoint("TOPLEFT", SIDE_PADDING, top)
+	frame.body:SetPoint("TOPLEFT", TEXT_LEFT, top)
 	frame.body:SetPoint("TOPRIGHT", -SIDE_PADDING, top)
 	frame.body:SetText(element.display)
 
@@ -286,10 +293,10 @@ local function InitLockedRow(frame, element)
 
 	if not frame.lockedBody then
 		frame.lockedMeta = ns.Widgets.Text(frame, "GameFontDisableSmall", "muted")
-		frame.lockedMeta:SetPoint("TOPLEFT", SIDE_PADDING, -4)
+		frame.lockedMeta:SetPoint("TOPLEFT", TEXT_LEFT, -4)
 
 		frame.lockedBody = ns.Widgets.Text(frame, "HangoutMessageFont", "muted")
-		frame.lockedBody:SetPoint("TOPLEFT", SIDE_PADDING, -HEADER_HEIGHT)
+		frame.lockedBody:SetPoint("TOPLEFT", TEXT_LEFT, -HEADER_HEIGHT)
 		frame.lockedBody:SetPoint("TOPRIGHT", -SIDE_PADDING, -HEADER_HEIGHT)
 		frame.lockedBody:SetWordWrap(true)
 		frame.lockedBody:SetMaxLines(LOCKED_MAX_LINES)

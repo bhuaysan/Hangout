@@ -24,7 +24,7 @@ end
 
 -- Never pass chat payloads here: they may be secret values.
 function ns.Print(text)
-	print("|cff5865f2Hangout|r: " .. text)
+	print("|cfff5c242Hangout|r: " .. text)
 end
 
 local boot = CreateFrame("Frame")

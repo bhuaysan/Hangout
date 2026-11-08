@@ -5,8 +5,11 @@ ns.Toast = Toast
 
 local WIDTH, HEIGHT = 300, 56
 local VISIBLE_SECONDS = 6
+local CREST_SIZE = 32
+local TEXT_LEFT = 12
+local TEXT_LEFT_WITH_CREST = TEXT_LEFT + CREST_SIZE + 8
 
-local frame, title, body, timer
+local frame, title, body, crest, timer
 local currentKey
 local wasDragged = false
 
@@ -63,15 +66,25 @@ local function Create()
 	bar:SetPoint("BOTTOMLEFT")
 	bar:SetWidth(3)
 
+	crest = frame:CreateTexture(nil, "ARTWORK")
+	crest:SetSize(CREST_SIZE, CREST_SIZE)
+	crest:SetPoint("LEFT", TEXT_LEFT, 0)
+
 	title = ns.Widgets.Text(frame, "GameFontNormal", "text")
-	title:SetPoint("TOPLEFT", 12, -9)
-	title:SetPoint("TOPRIGHT", -10, -9)
 	title:SetWordWrap(false)
 
 	body = ns.Widgets.Text(frame, "HangoutMessageFont", "muted")
-	body:SetPoint("TOPLEFT", 12, -30)
-	body:SetPoint("TOPRIGHT", -10, -30)
 	body:SetWordWrap(false)
+end
+
+local function ShowCrest(classToken)
+	local left = ns.Widgets.SetClassCrest(crest, classToken) and TEXT_LEFT_WITH_CREST or TEXT_LEFT
+	title:ClearAllPoints()
+	title:SetPoint("TOPLEFT", left, -9)
+	title:SetPoint("TOPRIGHT", -10, -9)
+	body:ClearAllPoints()
+	body:SetPoint("TOPLEFT", left, -30)
+	body:SetPoint("TOPRIGHT", -10, -30)
 end
 
 function Toast.Show(key, conv, record)
@@ -86,6 +99,7 @@ function Toast.Show(key, conv, record)
 		title:SetTextColor(ns.Theme.ClassColor(conv.class, "sidebar"))
 	end
 	title:SetText(name)
+	ShowCrest(record.s and record.k or conv.class)
 	body:SetText(ns.Emoji.Display(record.x))
 
 	frame:Show()

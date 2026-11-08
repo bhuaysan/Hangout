@@ -9,6 +9,10 @@ local ROW_HEIGHT = 28
 local RESULT_ROW_HEIGHT = 42
 local SEARCH_HEIGHT = 34
 local NEW_CHAT_SIZE = 22
+local CREST_LEFT = 8
+local CREST_SIZE = 20
+local PLAIN_TEXT_LEFT = 12
+local PERSON_TEXT_LEFT = CREST_LEFT + CREST_SIZE + 6
 local REFRESH_DELAY = 0.05
 local SEARCH_DELAY = 0.25
 local MIN_SEARCH_LENGTH = 2
@@ -219,9 +223,10 @@ local function BuildRow(frame)
 	frame.selected = ns.Widgets.Fill(frame, "selected")
 	frame.selected:Hide()
 
-	frame.status = frame:CreateTexture(nil, "ARTWORK")
-	frame.status:SetSize(14, 14)
-	frame.status:SetPoint("LEFT", 8, 0)
+	frame.crest = frame:CreateTexture(nil, "ARTWORK")
+	frame.crest:SetSize(CREST_SIZE, CREST_SIZE)
+
+	frame.status = frame:CreateTexture(nil, "OVERLAY")
 
 	frame.text = ns.Widgets.Text(frame, "GameFontHighlight", "text")
 	frame.text:SetWordWrap(false)
@@ -240,14 +245,42 @@ local function BuildRow(frame)
 	frame:SetScript("OnLeave", OnRowLeave)
 end
 
-local function LayoutText(frame, element)
+-- Shows the class crest with the online dot on its corner, or the dot alone if
+-- the class isn't known. Returns whether a crest is showing.
+local function LayoutIcons(frame, element)
 	local isRow = element.kind == "row"
+	local hasCrest = ns.Widgets.SetClassCrest(frame.crest, isRow and element.class or nil)
+	frame.crest:SetDesaturated(hasCrest and element.muted and true or false)
+	frame.crest:ClearAllPoints()
+	if collapsed then
+		frame.crest:SetPoint("CENTER")
+	else
+		frame.crest:SetPoint("LEFT", CREST_LEFT, 0)
+	end
+
 	local hasStatus = isRow and element.presence ~= nil and not collapsed
 	frame.status:SetShown(hasStatus)
 	if hasStatus then
 		frame.status:SetTexture(STATUS_ICON[element.presence])
+		frame.status:ClearAllPoints()
+		if hasCrest then
+			frame.status:SetSize(12, 12)
+			frame.status:SetPoint("CENTER", frame.crest, "BOTTOMRIGHT", -2, 2)
+		else
+			frame.status:SetSize(14, 14)
+			frame.status:SetPoint("LEFT", CREST_LEFT + 3, 0)
+		end
 	end
+	return hasCrest
+end
 
+-- People line up in one column whether or not their class is known yet.
+local function TextLeftFor(element)
+	local prefix = element.key and element.key:sub(1, 1)
+	return (prefix == "W" or prefix == "B") and PERSON_TEXT_LEFT or PLAIN_TEXT_LEFT
+end
+
+local function LayoutText(frame, element)
 	frame.text:ClearAllPoints()
 	frame.badge:ClearAllPoints()
 	if element.kind == "result" then
@@ -259,7 +292,7 @@ local function LayoutText(frame, element)
 		frame.text:SetJustifyH("CENTER")
 		frame.badge:SetPoint("TOPRIGHT", -2, -2)
 	else
-		frame.text:SetPoint("LEFT", hasStatus and 26 or 12, 0)
+		frame.text:SetPoint("LEFT", TextLeftFor(element), 0)
 		frame.text:SetPoint("RIGHT", -30, 0)
 		frame.text:SetJustifyH("LEFT")
 		frame.badge:SetPoint("RIGHT", -8, 0)
@@ -275,16 +308,17 @@ local function InitRow(frame, element)
 	frame:EnableMouse((isRow or isResult) and not ns.Window.IsFaded())
 	frame.selected:SetShown(isRow and element.key == ns.selectedKey)
 	frame.hover:Hide()
+	local hasCrest = LayoutIcons(frame, element)
 	LayoutText(frame, element)
 
 	local label = element.label
 	if collapsed and not isResult then
-		label = isRow and ns.Util.FirstCharacter(label) or ""
+		label = isRow and not hasCrest and ns.Util.FirstCharacter(label) or ""
 	end
 	frame.text:SetText(label)
 	frame.text:SetFontObject((isRow or isResult) and "GameFontHighlight" or "GameFontDisableSmall")
 	if isRow and not element.muted then
-		local overlay = element.key == selectedKey and "selected" or nil
+		local overlay = element.key == ns.selectedKey and "selected" or nil
 		frame.text:SetTextColor(ns.Theme.ClassColor(element.class, "sidebar", overlay))
 	elseif isResult then
 		frame.text:SetTextColor(ns.Theme.Color("text"))
