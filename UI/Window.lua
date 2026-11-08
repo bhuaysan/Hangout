@@ -11,8 +11,10 @@ local HEADER_HEIGHT = 40
 local COMPOSER_HEIGHT = 40
 local BANNER_HEIGHT = 24
 local RESIZE_REFRESH_DELAY = 0.1
+local GRIP_LEVEL_OFFSET = 40
 
-local frame, title, noteText, status, collapseLabel, header, banner, messages, sidebar
+local frame, title, noteText, status, collapseLabel, header, banner, messages, sidebar, emptyHint
+local settingsOpen = false
 local faded = false
 local hiddenForCombat = false
 local hiddenWithUI = false
@@ -86,6 +88,8 @@ local function CreateResizeGrip()
 	local grip = CreateFrame("Button", nil, frame)
 	grip:SetSize(16, 16)
 	grip:SetPoint("BOTTOMRIGHT")
+	-- Above the Settings panel, which covers the rest of the window.
+	grip:SetFrameLevel(frame:GetFrameLevel() + GRIP_LEVEL_OFFSET)
 	grip:SetNormalTexture("Interface\\ChatFrame\\UI-ChatIM-SizeGrabber-Up")
 	grip:SetHighlightTexture("Interface\\ChatFrame\\UI-ChatIM-SizeGrabber-Highlight")
 	grip:SetPushedTexture("Interface\\ChatFrame\\UI-ChatIM-SizeGrabber-Down")
@@ -214,6 +218,13 @@ local function Create()
 	messages:SetPoint("BOTTOMRIGHT", composer, "TOPRIGHT", 0, 1)
 	ns.MessageList.Create(messages)
 
+	emptyHint = ns.Widgets.Text(messages, "GameFontHighlight", "muted")
+	emptyHint:SetPoint("LEFT", 24, 0)
+	emptyHint:SetPoint("RIGHT", -24, 0)
+	emptyHint:SetJustifyH("CENTER")
+	emptyHint:SetText("Use the + next to Search to whisper someone. Chats also appear here when someone messages you.")
+	emptyHint:Hide()
+
 	ns.SettingsUI.Create(frame, header)
 	CreateResizeGrip()
 end
@@ -229,7 +240,9 @@ end
 local function UpdateStatus()
 	if not frame then return end
 	local presence = ns.selectedKey and ns.Identity.Presence(ns.selectedKey)
-	if ns.selectedKey and ns.Protocol.IsTyping(ns.selectedKey) then
+	if settingsOpen then
+		status:SetText("")
+	elseif ns.selectedKey and ns.Protocol.IsTyping(ns.selectedKey) then
 		status:SetText("typing...")
 	elseif presence == nil then
 		status:SetText("")
@@ -253,12 +266,20 @@ end
 local function UpdateTitle()
 	if not frame then return end
 	local conv = ns.selectedKey and ns.Store.Get(ns.selectedKey)
-	if not conv then return end
+	local hasChats = conv ~= nil or #ns.Store.List() > 0
+	local hasNote = conv ~= nil and conv.note ~= nil and not settingsOpen
 
-	title:SetText(ns.Store.LabelFor(ns.selectedKey, conv))
-	noteText:SetShown(conv.note ~= nil)
-	noteText:SetText(conv.note or "")
-	AnchorTitle(conv.note ~= nil)
+	if settingsOpen then
+		title:SetText("Settings")
+	elseif conv then
+		title:SetText(ns.Store.LabelFor(ns.selectedKey, conv))
+	else
+		title:SetText(hasChats and "Select a conversation" or "No conversations yet")
+	end
+	noteText:SetShown(hasNote)
+	noteText:SetText(hasNote and conv.note or "")
+	AnchorTitle(hasNote)
+	emptyHint:SetShown(not hasChats)
 end
 
 function Window.Select(key)
@@ -285,9 +306,7 @@ local function SelectNewest()
 	end
 
 	SetSelection(nil)
-	AnchorTitle(false)
-	title:SetText(#list > 0 and "Select a conversation" or "No conversations yet")
-	noteText:Hide()
+	UpdateTitle()
 	UpdateStatus()
 	UpdateActive()
 end
@@ -392,10 +411,19 @@ end)
 
 function Window.Open(key)
 	if not frame then Create() end
-	if frame:IsShown() then
-		Window.Select(key)
-	else
+	if not frame:IsShown() then
 		ShowWindow(key)
+	elseif key then
+		Window.Select(key)
+	end
+end
+
+-- Opens a chat ready to type in: key, or else the newest unread chat, or else
+-- the current one. A faded window stays out of the way of the fight.
+function Window.Reply(key)
+	Window.Open(key or ns.Store.NewestUnreadKey() or ns.selectedKey)
+	if not faded then
+		ns.Composer.Focus()
 	end
 end
 
@@ -434,6 +462,11 @@ ns.On("MESSAGE_ADDED", SelectIfEmpty)
 ns.On("LOCKED_ADDED", SelectIfEmpty)
 ns.On("LOCKDOWN_CHANGED", UpdateRestriction)
 ns.On("TYPING_CHANGED", UpdateStatus)
+ns.On("SETTINGS_TOGGLED", function(isOpen)
+	settingsOpen = isOpen
+	UpdateTitle()
+	UpdateStatus()
+end)
 
 -- The selected chat can disappear: deleted, blocked, or a temporary
 -- "During restriction" chat whose messages have been saved.

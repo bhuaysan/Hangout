@@ -8,6 +8,7 @@ local COLLAPSED_HEADER_HEIGHT = 8
 local ROW_HEIGHT = 28
 local RESULT_ROW_HEIGHT = 42
 local SEARCH_HEIGHT = 34
+local NEW_CHAT_SIZE = 22
 local REFRESH_DELAY = 0.05
 local SEARCH_DELAY = 0.25
 local MIN_SEARCH_LENGTH = 2
@@ -23,7 +24,7 @@ local STATUS_ICON = {
 	[false] = "Interface\\FriendsFrame\\StatusIcon-Offline",
 }
 
-local scrollBox, searchHolder, searchBox, searchPlaceholder
+local scrollBox, searchHolder, searchBox, searchPlaceholder, newChatButton
 local collapsed = false
 local searchResults = {}
 
@@ -283,7 +284,8 @@ local function InitRow(frame, element)
 	frame.text:SetText(label)
 	frame.text:SetFontObject((isRow or isResult) and "GameFontHighlight" or "GameFontDisableSmall")
 	if isRow and not element.muted then
-		frame.text:SetTextColor(ns.Theme.ClassColor(element.class))
+		local overlay = element.key == selectedKey and "selected" or nil
+		frame.text:SetTextColor(ns.Theme.ClassColor(element.class, "sidebar", overlay))
 	elseif isResult then
 		frame.text:SetTextColor(ns.Theme.Color("text"))
 	else
@@ -334,7 +336,7 @@ local function CreateSearchBox(parent)
 	local field
 	searchHolder, field = ns.Widgets.Field(parent, 1)
 	searchHolder:SetPoint("TOPLEFT", 8, -8)
-	searchHolder:SetPoint("TOPRIGHT", -8, -8)
+	searchHolder:SetPoint("TOPRIGHT", -(8 + NEW_CHAT_SIZE + 4), -8)
 	searchBox = field
 
 	searchPlaceholder = ns.Widgets.Text(searchHolder, "GameFontDisableSmall", "muted")
@@ -355,8 +357,30 @@ local function CreateSearchBox(parent)
 	end)
 end
 
+local function StartWhisper(text)
+	local key = ns.Store.StartWhisper(text)
+	if key then ns.Window.Reply(key) end
+end
+
+local function CreateNewChatButton(parent)
+	newChatButton = ns.Widgets.TextButton(parent, "+", "GameFontHighlightLarge")
+	newChatButton:SetSize(NEW_CHAT_SIZE, NEW_CHAT_SIZE)
+	newChatButton:SetPoint("TOPRIGHT", -8, -8)
+	ns.Widgets.Fill(newChatButton, "selected")
+	newChatButton:SetScript("OnClick", function()
+		ns.Prompt.AskText("Who do you want to whisper? Enter their full name.", "", StartWhisper, "Start")
+	end)
+	newChatButton:HookScript("OnEnter", function(self)
+		GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+		GameTooltip:SetText("New whisper")
+		GameTooltip:Show()
+	end)
+	newChatButton:HookScript("OnLeave", function() GameTooltip:Hide() end)
+end
+
 function Sidebar.Create(parent)
 	CreateSearchBox(parent)
+	CreateNewChatButton(parent)
 
 	local view = CreateScrollBoxListLinearView(4, 8, 0, 0, 0)
 	view:SetElementInitializer("Button", InitRow)
@@ -373,6 +397,7 @@ end
 function Sidebar.SetCollapsed(isCollapsed)
 	collapsed = isCollapsed
 	searchHolder:SetShown(not collapsed)
+	newChatButton:SetShown(not collapsed)
 	if collapsed then searchBox:SetText("") end
 	scrollBox:SetPoint("TOPLEFT", 0, collapsed and 0 or -SEARCH_HEIGHT)
 	Sidebar.Refresh()

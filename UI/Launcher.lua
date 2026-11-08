@@ -124,9 +124,14 @@ end
 -- Global entry points for Bindings.xml and the addon compartment ---------------
 
 BINDING_NAME_HANGOUT_TOGGLE = "Open or close Hangout"
+BINDING_NAME_HANGOUT_REPLY = "Reply to the newest message"
 
 function Hangout_Toggle()
 	ns.Window.Toggle()
+end
+
+function Hangout_Reply()
+	ns.Window.Reply()
 end
 
 function Hangout_OnCompartmentClick()

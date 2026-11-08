@@ -12,10 +12,18 @@ local REASON_TEXT = {
 	unavailable = "This conversation can't receive messages right now.",
 }
 
-local box, placeholder
+local FOCUS_LINE_HEIGHT = 2
+
+local box, placeholder, focusLine
 
 local function UpdatePlaceholder()
 	placeholder:SetShown(box:GetText() == "" and not box:HasFocus())
+end
+
+-- In a game the same keys cast spells, so typing must be obvious at a glance.
+local function UpdateFocus()
+	UpdatePlaceholder()
+	focusLine:SetShown(box:HasFocus())
 end
 
 local function OnTextChanged(_, userInput)
@@ -69,8 +77,14 @@ function Composer.Create(parent)
 	box:SetScript("OnEnterPressed", OnEnterPressed)
 	box:SetScript("OnEscapePressed", box.ClearFocus)
 	box:SetScript("OnTextChanged", OnTextChanged)
-	box:SetScript("OnEditFocusGained", UpdatePlaceholder)
-	box:SetScript("OnEditFocusLost", UpdatePlaceholder)
+	box:SetScript("OnEditFocusGained", UpdateFocus)
+	box:SetScript("OnEditFocusLost", UpdateFocus)
+
+	focusLine = ns.Widgets.Solid(parent, "accent", "OVERLAY")
+	focusLine:SetPoint("TOPLEFT")
+	focusLine:SetPoint("TOPRIGHT")
+	focusLine:SetHeight(FOCUS_LINE_HEIGHT)
+	focusLine:Hide()
 
 	placeholder = ns.Widgets.Text(box, "HangoutMessageFont", "muted")
 	placeholder:SetPoint("LEFT")
@@ -85,7 +99,9 @@ end
 
 local function UpdateHint()
 	if not placeholder then return end
-	if ns.Lockdown.IsActive() then
+	if not ns.selectedKey then
+		placeholder:SetText("Pick a chat to start typing.")
+	elseif ns.Lockdown.IsActive() then
 		placeholder:SetText("Restricted right now. Use normal chat to reply.")
 	elseif ns.selectedKey == ns.Capture.LOCKED_KEY then
 		placeholder:SetText("Use normal chat to reply to these messages.")
@@ -96,6 +112,13 @@ end
 
 function Composer.ClearFocus()
 	if box then box:ClearFocus() end
+end
+
+-- Waits a frame so the key that asked for this isn't typed into the box.
+function Composer.Focus()
+	C_Timer.After(0, function()
+		if box and ns.selectedKey then box:SetFocus() end
+	end)
 end
 
 function Composer.Insert(text)

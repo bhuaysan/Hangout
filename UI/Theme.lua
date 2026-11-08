@@ -13,10 +13,17 @@ Theme.CUSTOMIZABLE = {
 	{ token = "accent", label = "Accent" },
 }
 
+-- Below this the window stops being readable over a bright game world.
+Theme.MIN_OPACITY = 70
+
+local MIN_NAME_CONTRAST = 4.5
+local NAME_MIX_STEP = 0.05
+
 local DARK_OVERLAYS = {
 	hover = { 1, 1, 1, 0.05 },
 	selected = { 1, 1, 1, 0.10 },
 	divider = { 1, 1, 1, 0.07 },
+	outline = { 1, 1, 1, 0.30 },
 	notice = { 0.62, 0.42, 0.08, 0.45 },
 }
 
@@ -24,6 +31,7 @@ local LIGHT_OVERLAYS = {
 	hover = { 0, 0, 0, 0.05 },
 	selected = { 0, 0, 0, 0.10 },
 	divider = { 0, 0, 0, 0.12 },
+	outline = { 0, 0, 0, 0.35 },
 	notice = { 0.95, 0.70, 0.20, 0.55 },
 }
 
@@ -85,6 +93,8 @@ local function BuildTokens()
 		local override = custom[token] or color
 		tokens[token] = { override[1], override[2], override[3], 1 }
 	end
+	-- A solid copy of the background, for layers that cover other content.
+	tokens.panel = { tokens.bg[1], tokens.bg[2], tokens.bg[3], 1 }
 	tokens.bg[4] = opacity
 	tokens.sidebar[4] = opacity
 end
@@ -95,6 +105,9 @@ local function ApplyFont()
 end
 
 function Theme.Apply()
+	if ns.Get("windowOpacity") < Theme.MIN_OPACITY then
+		ns.Set("windowOpacity", Theme.MIN_OPACITY)
+	end
 	BuildTokens()
 	ApplyFont()
 	ns.Widgets.Repaint()
@@ -106,13 +119,61 @@ function Theme.Color(token)
 	return color[1], color[2], color[3], color[4]
 end
 
--- Class color when known, otherwise the normal text color.
-function Theme.ClassColor(classToken)
-	local color = classToken and RAID_CLASS_COLORS[classToken]
-	if color then
-		return color.r, color.g, color.b, 1
+local function LinearChannel(value)
+	if value <= 0.03928 then
+		return value / 12.92
 	end
-	return Theme.Color("text")
+	return ((value + 0.055) / 1.055) ^ 2.4
+end
+
+local function Luminance(r, g, b)
+	return 0.2126 * LinearChannel(r) + 0.7152 * LinearChannel(g) + 0.0722 * LinearChannel(b)
+end
+
+local function Contrast(luminanceA, luminanceB)
+	local lighter = math.max(luminanceA, luminanceB)
+	local darker = math.min(luminanceA, luminanceB)
+	return (lighter + 0.05) / (darker + 0.05)
+end
+
+-- The color of a surface token, with an optional overlay token on top of it.
+local function SurfaceLuminance(surface, overlay)
+	local base = tokens[surface]
+	local r, g, b = base[1], base[2], base[3]
+	local top = overlay and tokens[overlay]
+	if top then
+		r = r + (top[1] - r) * top[4]
+		g = g + (top[2] - g) * top[4]
+		b = b + (top[3] - b) * top[4]
+	end
+	return Luminance(r, g, b)
+end
+
+-- Mixes a color toward white or black until it can be read on the surface.
+local function Readable(r, g, b, surfaceLuminance)
+	local target = Contrast(1, surfaceLuminance) >= Contrast(0, surfaceLuminance) and 1 or 0
+	local mix = 0
+	while mix < 1 do
+		local mixedR = r + (target - r) * mix
+		local mixedG = g + (target - g) * mix
+		local mixedB = b + (target - b) * mix
+		if Contrast(Luminance(mixedR, mixedG, mixedB), surfaceLuminance) >= MIN_NAME_CONTRAST then
+			return mixedR, mixedG, mixedB
+		end
+		mix = mix + NAME_MIX_STEP
+	end
+	return target, target, target
+end
+
+-- Class color when known, adjusted to be readable on the surface it sits on
+-- ("bg" unless given), otherwise the normal text color.
+function Theme.ClassColor(classToken, surface, overlay)
+	local color = classToken and RAID_CLASS_COLORS[classToken]
+	if not color then
+		return Theme.Color("text")
+	end
+	local r, g, b = Readable(color.r, color.g, color.b, SurfaceLuminance(surface or "bg", overlay))
+	return r, g, b, 1
 end
 
 function Theme.PresetLabel(name)

@@ -2,4 +2,7 @@
 	<Binding name="HANGOUT_TOGGLE" category="Hangout">
 		Hangout_Toggle()
 	</Binding>
+	<Binding name="HANGOUT_REPLY" category="Hangout">
+		Hangout_Reply()
+	</Binding>
 </Bindings>

@@ -169,6 +169,7 @@ function stubs.Install()
 		rawset(frame, "RegisterEvent", function(self, event) self.events[event] = true end)
 		rawset(frame, "UnregisterEvent", function(self, event) self.events[event] = nil end)
 		rawset(frame, "SetScript", function(self, name, handler) rawset(self, name, handler) end)
+		rawset(frame, "GetFrameLevel", function() return 1 end)
 		stubs.frames[#stubs.frames + 1] = frame
 		return frame
 	end

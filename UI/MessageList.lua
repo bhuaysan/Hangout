@@ -14,6 +14,15 @@ local REACTION_ROW_HEIGHT = 20
 local FALLBACK_LINE_HEIGHT = 15
 local CONTEXT_ROWS = 20
 
+local REACTION_NAMES = {
+	thumbsup = "Thumbs up",
+	heart = "Heart",
+	joy = "Laughing",
+	tada = "Celebrate",
+	thinking = "Thinking",
+	sob = "Crying",
+}
+
 local scrollBox, measure
 local visibleLimit = PAGE_SIZE
 local unreadAfterId
@@ -149,12 +158,28 @@ local function ShowReactionMenu(owner, messageId)
 	MenuUtil.CreateContextMenu(owner, function(_, root)
 		root:CreateTitle("React")
 		for _, emoji in ipairs(ns.Protocol.QUICK_REACTIONS) do
-			local active = ns.Protocol.HasMyReaction(ns.selectedKey, messageId, emoji)
-			root:CreateButton(ns.Emoji.Tag(emoji) .. (active and "  Remove" or "  " .. emoji), function()
-				ns.Protocol.ToggleReaction(ns.selectedKey, messageId, emoji)
-			end)
+			local item = root:CreateCheckbox(ns.Emoji.Tag(emoji) .. "  " .. REACTION_NAMES[emoji],
+				function() return ns.Protocol.HasMyReaction(ns.selectedKey, messageId, emoji) end,
+				function() ns.Protocol.ToggleReaction(ns.selectedKey, messageId, emoji) end)
+			item:SetResponse(MenuResponse.CloseAll)
 		end
 	end)
+end
+
+-- Says why instead of leaving a right-click with no response.
+local function ShowReactionsUnavailable(owner)
+	local reason = ns.Lockdown.IsActive() and "Not available while chat is restricted"
+		or "Only works with other Hangout users"
+	MenuUtil.CreateContextMenu(owner, function(_, root)
+		root:CreateTitle("React")
+		root:CreateButton(reason):SetEnabled(false)
+	end)
+end
+
+-- Reactions travel over whispers, so other chats have nothing to explain.
+local function IsWhisper(key)
+	local prefix = key and key:sub(1, 1)
+	return prefix == "W" or prefix == "B"
 end
 
 local function OnRowMouseUp(self, button)
@@ -163,9 +188,23 @@ local function OnRowMouseUp(self, button)
 	if element.kind == "older" and button == "LeftButton" then
 		visibleLimit = visibleLimit + PAGE_SIZE
 		MessageList.Refresh()
-	elseif element.kind == "message" and button == "RightButton" and ns.Protocol.CanReact(ns.selectedKey) then
-		ShowReactionMenu(self, element.id)
+	elseif element.kind == "message" and button == "RightButton" then
+		if ns.Protocol.CanReact(ns.selectedKey) then
+			ShowReactionMenu(self, element.id)
+		elseif IsWhisper(ns.selectedKey) then
+			ShowReactionsUnavailable(self)
+		end
 	end
+end
+
+local function OnRowEnter(self)
+	if self.element and self.element.kind == "message" then
+		self.hover:Show()
+	end
+end
+
+local function OnRowLeave(self)
+	self.hover:Hide()
 end
 
 local function BuildRow(frame)
@@ -183,6 +222,7 @@ local function BuildRow(frame)
 	frame.label:SetJustifyH("CENTER")
 
 	frame.highlight = ns.Widgets.Fill(frame, "selected")
+	frame.hover = ns.Widgets.Fill(frame, "hover")
 
 	frame.reactions = ns.Widgets.Text(frame, "GameFontHighlightSmall", "muted")
 	frame.reactions:SetPoint("TOPLEFT", frame.body, "BOTTOMLEFT", 0, -3)
@@ -195,6 +235,8 @@ local function BuildRow(frame)
 	frame:SetHyperlinksEnabled(true)
 	frame:SetScript("OnHyperlinkClick", OnHyperlinkClick)
 	frame:SetScript("OnMouseUp", OnRowMouseUp)
+	frame:SetScript("OnEnter", OnRowEnter)
+	frame:SetScript("OnLeave", OnRowLeave)
 end
 
 local function InitRow(frame, element)
@@ -208,6 +250,7 @@ local function InitRow(frame, element)
 	frame.label:SetShown(not isMessage)
 	frame.mentionBar:SetShown(isMessage and element.mention)
 	frame.highlight:SetShown(isMessage and element.id ~= nil and element.id == highlightId)
+	frame.hover:Hide()
 	frame.reactions:SetShown(isMessage and element.reactions ~= nil)
 	if isMessage and element.reactions then
 		frame.reactions:SetText(element.reactions)

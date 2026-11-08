@@ -3,17 +3,26 @@ local _, ns = ...
 local SettingsUI = {}
 ns.SettingsUI = SettingsUI
 
+local PANEL_NAME = "HangoutSettingsPanel"
+local WINDOW_NAME = "HangoutWindow"
 local ROW_HEIGHT = 28
-local SECTION_GAP = 14
+local HEADER_HEIGHT = 30
+local SECTION_PADDING = 10
 local LEFT = 16
 local CONTROL_X = 280
 local CHOICE_WIDTH = 170
+local SWATCH_WIDTH = 40
+local CHECK_SIZE = 16
+local CHECK_LABEL_GAP = 8
 local FIELD_WIDTH = 300
 local WHEEL_STEP = 60
 
-local panel, scroller, content
+local panel, scroller, root
+local content -- the body of the section being built
 local cursor = 0
 local refreshers = {}
+local sections = {}
+local openSection
 
 local function NextRow(height)
 	local top = -cursor
@@ -27,11 +36,64 @@ local function RefreshAll()
 	end
 end
 
-local function Section(title)
-	cursor = cursor + SECTION_GAP
-	local text = ns.Widgets.Text(content, "GameFontDisableSmall", "muted")
-	text:SetPoint("TOPLEFT", LEFT, NextRow(20))
-	text:SetText(title)
+-- Stacks the section headers, with only the open section's rows between them.
+local function LayoutSections()
+	local top = 0
+	for _, section in ipairs(sections) do
+		local isOpen = section == openSection
+		section.header:SetPoint("TOPLEFT", root, "TOPLEFT", 0, -top)
+		section.header:SetPoint("TOPRIGHT", root, "TOPRIGHT", 0, -top)
+		section.marker:SetText(isOpen and "-" or "+")
+		top = top + HEADER_HEIGHT
+
+		section.body:SetShown(isOpen)
+		if isOpen then
+			section.body:SetPoint("TOPLEFT", root, "TOPLEFT", 0, -top)
+			section.body:SetPoint("TOPRIGHT", root, "TOPRIGHT", 0, -top)
+			section.body:SetHeight(section.height)
+			top = top + section.height + SECTION_PADDING
+		end
+	end
+	root:SetHeight(top)
+	scroller:SetVerticalScroll(0)
+end
+
+-- A collapsible group of rows. build() adds its rows to the section.
+local function AddSection(title, build)
+	local section = {}
+	sections[#sections + 1] = section
+
+	local header = CreateFrame("Button", nil, root)
+	header:SetHeight(HEADER_HEIGHT)
+	section.header = header
+
+	local hover = ns.Widgets.Fill(header, "hover")
+	hover:Hide()
+	header:SetScript("OnEnter", function() hover:Show() end)
+	header:SetScript("OnLeave", function() hover:Hide() end)
+
+	local line = ns.Widgets.Solid(header, "divider", "ARTWORK")
+	line:SetPoint("TOPLEFT")
+	line:SetPoint("TOPRIGHT")
+	line:SetHeight(1)
+
+	local label = ns.Widgets.Text(header, "GameFontDisableSmall", "muted")
+	label:SetPoint("LEFT", LEFT, 0)
+	label:SetText(title)
+
+	section.marker = ns.Widgets.Text(header, "GameFontHighlight", "muted")
+	section.marker:SetPoint("RIGHT", -LEFT, 0)
+
+	header:SetScript("OnClick", function()
+		openSection = openSection ~= section and section or nil
+		LayoutSections()
+	end)
+
+	section.body = CreateFrame("Frame", nil, root)
+	content = section.body
+	cursor = 0
+	build()
+	section.height = cursor
 end
 
 local function Label(text, top)
@@ -43,23 +105,31 @@ end
 
 local function Toggle(text, settingKey, onChange)
 	local top = NextRow()
-	local box = CreateFrame("Button", nil, content)
-	box:SetSize(16, 16)
-	box:SetPoint("LEFT", content, "TOPLEFT", LEFT, top - ROW_HEIGHT / 2)
-	ns.Widgets.Fill(box, "selected")
+	local row = CreateFrame("Button", nil, content)
+	row:SetPoint("LEFT", content, "TOPLEFT", LEFT, top - ROW_HEIGHT / 2)
 
-	local check = ns.Widgets.Solid(box, "accent", "ARTWORK")
-	check:SetPoint("TOPLEFT", 3, -3)
-	check:SetPoint("BOTTOMRIGHT", -3, 3)
+	local outline = ns.Widgets.Solid(row, "outline", "BACKGROUND")
+	outline:SetSize(CHECK_SIZE, CHECK_SIZE)
+	outline:SetPoint("LEFT")
 
-	local label = ns.Widgets.Text(content, "GameFontHighlight", "text")
-	label:SetPoint("LEFT", box, "RIGHT", 8, 0)
+	local inner = ns.Widgets.Solid(row, "panel", "BORDER")
+	inner:SetPoint("TOPLEFT", outline, "TOPLEFT", 1, -1)
+	inner:SetPoint("BOTTOMRIGHT", outline, "BOTTOMRIGHT", -1, 1)
+
+	local check = ns.Widgets.Solid(row, "accent", "ARTWORK")
+	check:SetPoint("TOPLEFT", outline, "TOPLEFT", 3, -3)
+	check:SetPoint("BOTTOMRIGHT", outline, "BOTTOMRIGHT", -3, 3)
+
+	local label = ns.Widgets.Text(row, "GameFontHighlight", "text")
+	label:SetPoint("LEFT", outline, "RIGHT", CHECK_LABEL_GAP, 0)
 	label:SetText(text)
+	-- The whole label is clickable, not only the box.
+	row:SetSize(CHECK_SIZE + CHECK_LABEL_GAP + label:GetStringWidth(), ROW_HEIGHT)
 
 	local function refresh()
 		check:SetShown(ns.Get(settingKey) and true or false)
 	end
-	box:SetScript("OnClick", function()
+	row:SetScript("OnClick", function()
 		ns.Set(settingKey, not ns.Get(settingKey))
 		refresh()
 		if onChange then onChange() end
@@ -148,10 +218,13 @@ local function ColorRow(entry)
 	Label(entry.label, top)
 
 	local swatch = CreateFrame("Button", nil, content)
-	swatch:SetSize(CHOICE_WIDTH, 20)
+	swatch:SetSize(SWATCH_WIDTH, 20)
 	swatch:SetPoint("LEFT", content, "TOPLEFT", CONTROL_X, top - ROW_HEIGHT / 2)
+	-- The outline keeps a swatch visible when its color matches the panel.
+	ns.Widgets.Fill(swatch, "outline")
 	local color = swatch:CreateTexture(nil, "ARTWORK")
-	color:SetAllPoints()
+	color:SetPoint("TOPLEFT", 1, -1)
+	color:SetPoint("BOTTOMRIGHT", -1, 1)
 
 	local function refresh()
 		local r, g, b = ns.Theme.Color(entry.token)
@@ -238,13 +311,12 @@ local function ThemeOptions()
 end
 
 local function BuildAppearance()
-	Section("APPEARANCE")
 	Choice("Theme", ThemeOptions(), ns.Theme.ActiveName, function(name)
 		ns.Theme.SetPreset(name)
 		RefreshAll()
 	end)
 	Stepper("Message text size", "messageSize", 10, 22, 1, nil, ns.Theme.Apply)
-	Stepper("Window opacity", "windowOpacity", 40, 100, 5, "%", ns.Theme.Apply)
+	Stepper("Window opacity", "windowOpacity", ns.Theme.MIN_OPACITY, 100, 5, "%", ns.Theme.Apply)
 	for _, entry in ipairs(ns.Theme.CUSTOMIZABLE) do
 		ColorRow(entry)
 	end
@@ -265,7 +337,6 @@ local function SoundChoice(text, category)
 end
 
 local function BuildNotifications()
-	Section("NOTIFICATIONS")
 	Toggle("Do Not Disturb", "dnd", function() ns.Launcher.UpdateDndIcon() end)
 	SoundChoice("Whisper sound", "Whisper")
 	SoundChoice("Group sound", "Group")
@@ -281,7 +352,6 @@ local function BuildNotifications()
 end
 
 local function BuildSpamControl()
-	Section("SPAM CONTROL")
 	Toggle("Put strangers' whispers in Requests", "requestsEnabled")
 	RuleRow("Blocked words", "blockWords")
 	RuleRow("Hide in channels", "channelHideWords")
@@ -297,7 +367,6 @@ local function BuildSpamControl()
 end
 
 local function BuildBehavior()
-	Section("BEHAVIOR")
 	SettingChoice("In combat", "combatMode", {
 		{ value = "fade", label = "Fade" },
 		{ value = "hide", label = "Hide" },
@@ -311,7 +380,6 @@ local function BuildBehavior()
 end
 
 local function BuildHistory()
-	Section("HISTORY")
 	Stepper("Keep whispers for", "retentionWhisperDays", 30, 360, 30, " days")
 	Stepper("Keep guild and group for", "retentionGroupDays", 7, 91, 7, " days")
 	Stepper("Keep saved channels for", "retentionChannelDays", 7, 91, 7, " days")
@@ -321,45 +389,74 @@ local function BuildHistory()
 end
 
 local function BuildAbout()
-	Section("ABOUT")
 	Note("Hangout " .. ns.version)
 	Note("Emoji graphics by Twemoji contributors, licensed under CC-BY 4.0.")
 	Note("See Media\\TWEMOJI-LICENSE.txt or creativecommons.org/licenses/by/4.0")
 end
 
+local function RemoveEscapeEntry(name)
+	for index = #UISpecialFrames, 1, -1 do
+		if UISpecialFrames[index] == name then
+			table.remove(UISpecialFrames, index)
+		end
+	end
+end
+
+-- The game hides every listed frame on one Esc press, so only the top layer
+-- may be listed for Esc to step back from Settings to the chat.
+local function UpdateEscapeTarget()
+	RemoveEscapeEntry(PANEL_NAME)
+	RemoveEscapeEntry(WINDOW_NAME)
+	tinsert(UISpecialFrames, panel:IsVisible() and PANEL_NAME or WINDOW_NAME)
+end
+
 function SettingsUI.Create(window, header)
-	panel = CreateFrame("Frame", nil, window)
+	panel = CreateFrame("Frame", PANEL_NAME, window)
 	panel:SetPoint("TOPLEFT", header, "BOTTOMLEFT", 0, -1)
-	panel:SetPoint("BOTTOMRIGHT", window, "BOTTOMRIGHT", 0, 16)
+	panel:SetPoint("BOTTOMRIGHT", window, "BOTTOMRIGHT")
 	panel:SetFrameLevel(window:GetFrameLevel() + 30)
 	panel:EnableMouse(true)
 	panel:Hide()
-	ns.Widgets.Fill(panel, "bg")
-
-	scroller = CreateFrame("ScrollFrame", nil, panel)
-	scroller:SetAllPoints()
-	scroller:EnableMouseWheel(true)
-	scroller:SetScript("OnMouseWheel", function(self, delta)
-		local target = self:GetVerticalScroll() - delta * WHEEL_STEP
-		self:SetVerticalScroll(math.max(0, math.min(self:GetVerticalScrollRange(), target)))
+	ns.Widgets.Fill(panel, "panel")
+	panel:SetScript("OnShow", function()
+		UpdateEscapeTarget()
+		ns.Fire("SETTINGS_TOGGLED", true)
+	end)
+	panel:SetScript("OnHide", function()
+		-- The game is still walking the Esc list when this runs, so wait a frame.
+		C_Timer.After(0, UpdateEscapeTarget)
+		ns.Fire("SETTINGS_TOGGLED", false)
 	end)
 
-	content = CreateFrame("Frame", nil, scroller)
-	content:SetSize(1, 1)
-	scroller:SetScrollChild(content)
-	scroller:SetScript("OnSizeChanged", function(self, width) content:SetWidth(width) end)
+	local scrollBar = CreateFrame("EventFrame", nil, panel, "MinimalScrollBar")
+	scrollBar:SetPoint("TOPRIGHT", -2, -4)
+	scrollBar:SetPoint("BOTTOMRIGHT", -2, 18)
+	scrollBar:SetHideIfUnscrollable(true)
 
-	BuildAppearance()
-	BuildNotifications()
-	BuildSpamControl()
-	BuildBehavior()
-	BuildHistory()
-	BuildAbout()
-	content:SetHeight(cursor + SECTION_GAP)
+	scroller = CreateFrame("ScrollFrame", nil, panel)
+	scroller:SetPoint("TOPLEFT")
+	scroller:SetPoint("BOTTOMRIGHT", -14, 0)
+	scroller:EnableMouseWheel(true)
+	ScrollUtil.InitScrollFrameWithScrollBar(scroller, scrollBar)
+	scroller:SetPanExtent(WHEEL_STEP)
+
+	root = CreateFrame("Frame", nil, scroller)
+	root:SetSize(1, 1)
+	scroller:SetScrollChild(root)
+	scroller:SetScript("OnSizeChanged", function(self, width) root:SetWidth(width) end)
+
+	AddSection("APPEARANCE", BuildAppearance)
+	AddSection("NOTIFICATIONS", BuildNotifications)
+	AddSection("SPAM CONTROL", BuildSpamControl)
+	AddSection("BEHAVIOR", BuildBehavior)
+	AddSection("HISTORY", BuildHistory)
+	AddSection("ABOUT", BuildAbout)
+	openSection = sections[1]
+	LayoutSections()
 end
 
 function SettingsUI.Show()
-	content:SetWidth(scroller:GetWidth())
+	root:SetWidth(scroller:GetWidth())
 	RefreshAll()
 	panel:Show()
 end

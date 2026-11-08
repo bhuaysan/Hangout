@@ -167,6 +167,42 @@ function Store.UnreadCount(key, conv)
 	return (conv.unread or 0) + (ns.session.liveUnread[key] or 0)
 end
 
+-- The most recently active chat with unread messages, for the reply key.
+-- Requests and muted chats are only opened on purpose.
+function Store.NewestUnreadKey()
+	for _, entry in ipairs(Store.List()) do
+		local conv = entry.conv
+		if not conv.mute and not conv.req and Store.UnreadCount(entry.key, conv) > 0 then
+			return entry.key
+		end
+	end
+	return nil
+end
+
+-- Finds or creates a whisper chat from a name the player typed. Returns its
+-- key, or nil if the text isn't a name. The server reports names capitalized,
+-- so a chat must not be split in two by how the name was typed.
+function Store.StartWhisper(typedName)
+	local name = ns.Util.NormalizeName(ns.Util.Trim(typedName))
+	if not name then return nil end
+
+	local wanted = name:lower()
+	for _, entry in ipairs(Store.List()) do
+		if entry.key:sub(1, 2) == "W:" and entry.key:sub(3):lower() == wanted then
+			return entry.key
+		end
+	end
+
+	name = name:gsub("(%S)(%S*)", function(first, rest)
+		return first:upper() .. rest:lower()
+	end)
+	local key = "W:" .. name
+	local conv = Store.Ensure(key, { name = name })
+	conv.lastT = GetServerTime() -- so it sorts to the top of the list
+	ns.Fire("CONV_CHANGED")
+	return key
+end
+
 -- Muted chats and requests keep their own badge but don't add to the total.
 function Store.TotalUnread()
 	local total = 0

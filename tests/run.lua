@@ -961,12 +961,106 @@ end)
 
 Test("window opacity applies to the background only", function()
 	local ns = Boot()
-	ns.Set("windowOpacity", 50)
+	ns.Set("windowOpacity", 80)
 	ns.Theme.Apply()
 	local _, _, _, bgAlpha = ns.Theme.Color("bg")
 	local _, _, _, textAlpha = ns.Theme.Color("text")
-	Equal(bgAlpha, 0.5)
+	Equal(bgAlpha, 0.8)
 	Equal(textAlpha, 1)
+end)
+
+Test("a saved opacity below the minimum is raised to it", function()
+	local ns = Boot()
+	ns.Set("windowOpacity", 40)
+	ns.Theme.Apply()
+	Equal(ns.Get("windowOpacity"), ns.Theme.MIN_OPACITY)
+	local _, _, _, panelAlpha = ns.Theme.Color("panel")
+	Equal(panelAlpha, 1, "layers that cover content stay solid")
+end)
+
+-- WCAG contrast of a color against a plain surface color.
+local function ContrastOf(r, g, b, surfaceR, surfaceG, surfaceB)
+	local function linear(value)
+		return value <= 0.03928 and value / 12.92 or ((value + 0.055) / 1.055) ^ 2.4
+	end
+	local function luminance(red, green, blue)
+		return 0.2126 * linear(red) + 0.7152 * linear(green) + 0.0722 * linear(blue)
+	end
+	local a, b2 = luminance(r, g, b), luminance(surfaceR, surfaceG, surfaceB)
+	return (math.max(a, b2) + 0.05) / (math.min(a, b2) + 0.05)
+end
+
+Test("class names are readable on every theme and surface", function()
+	local ns = Boot()
+	_G.RAID_CLASS_COLORS = {
+		SHAMAN = { r = 0, g = 0.44, b = 0.87 },
+		ROGUE = { r = 1, g = 0.96, b = 0.41 },
+		PRIEST = { r = 1, g = 1, b = 1 },
+	}
+	for _, preset in ipairs(ns.Theme.PRESET_ORDER) do
+		ns.Theme.SetPreset(preset)
+		for class in pairs(RAID_CLASS_COLORS) do
+			for _, surface in ipairs({ "bg", "sidebar" }) do
+				local r, g, b = ns.Theme.ClassColor(class, surface)
+				local sr, sg, sb = ns.Theme.Color(surface)
+				assert(ContrastOf(r, g, b, sr, sg, sb) >= 4.5, preset .. " " .. class .. " on " .. surface)
+			end
+		end
+	end
+end)
+
+Test("a class color that is already readable is left alone", function()
+	local ns = Boot()
+	_G.RAID_CLASS_COLORS = { PRIEST = { r = 1, g = 1, b = 1 } }
+	ns.Theme.SetPreset("midnight")
+	local r, g, b, a = ns.Theme.ClassColor("PRIEST")
+	Equal(r, 1)
+	Equal(g, 1)
+	Equal(b, 1)
+	Equal(a, 1)
+end)
+
+Test("the selected row is accounted for when adjusting a name", function()
+	local ns = Boot()
+	_G.RAID_CLASS_COLORS = { SHAMAN = { r = 0, g = 0.44, b = 0.87 } }
+	ns.Theme.SetPreset("midnight")
+	local plainR = ns.Theme.ClassColor("SHAMAN", "sidebar")
+	local selectedR = ns.Theme.ClassColor("SHAMAN", "sidebar", "selected")
+	assert(selectedR > plainR, "a lighter row needs a lighter name")
+end)
+
+Test("starting a whisper creates a chat that sorts first", function()
+	local ns = Boot()
+	Chat(ns, "CHAT_MSG_WHISPER", { text = "old", name = "Other Person" })
+	stubs.serverTime = stubs.serverTime + 10
+	local key = ns.Store.StartWhisper("  new friend ")
+	Equal(key, "W:New Friend")
+	Equal(ns.Store.Get(key).name, "New Friend")
+	Equal(ns.Store.List()[1].key, key)
+end)
+
+Test("starting a whisper finds an existing chat however the name is typed", function()
+	local ns = Boot()
+	Chat(ns, "CHAT_MSG_WHISPER", { text = "hi", name = "Other Person" })
+	Equal(ns.Store.StartWhisper("other-person"), "W:Other Person")
+	Equal(ns.Store.StartWhisper("OTHER PERSON"), "W:Other Person")
+	Equal(#ns.Store.List(), 1)
+end)
+
+Test("starting a whisper ignores blank input", function()
+	local ns = Boot()
+	Equal(ns.Store.StartWhisper("   "), nil)
+	Equal(#ns.Store.List(), 0)
+end)
+
+Test("the reply key skips requests and muted chats", function()
+	local ns = Boot()
+	Equal(ns.Store.NewestUnreadKey(), nil)
+	Chat(ns, "CHAT_MSG_WHISPER", { text = "first", name = "Plain Chat" })
+	stubs.serverTime = stubs.serverTime + 10
+	Chat(ns, "CHAT_MSG_WHISPER", { text = "second", name = "Muted Chat" })
+	ns.Store.SetField("W:Muted Chat", "mute", true)
+	Equal(ns.Store.NewestUnreadKey(), "W:Plain Chat")
 end)
 
 Test("keywords can be replaced from comma-separated text", function()

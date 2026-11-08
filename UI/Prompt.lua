@@ -62,9 +62,9 @@ local function Open(text, label, withField, initial, callback)
 	end
 end
 
--- callback receives the entered text.
-function Prompt.AskText(text, initial, callback)
-	Open(text, "Save", true, initial, callback)
+-- callback receives the entered text. The button says "Save" unless given a label.
+function Prompt.AskText(text, initial, callback, acceptText)
+	Open(text, acceptText or "Save", true, initial, callback)
 end
 
 function Prompt.Confirm(text, label, callback)

@@ -31,7 +31,7 @@ local function OnMouseUp(_, button)
 	end
 	frame:Hide()
 	if button == "LeftButton" and currentKey then
-		ns.Window.Open(currentKey)
+		ns.Window.Reply(currentKey)
 	end
 end
 
@@ -81,9 +81,9 @@ function Toast.Show(key, conv, record)
 	local name = ns.Store.LabelFor(key, conv)
 	if record.s then
 		name = name .. ": " .. ns.Store.SenderLabel(record.s)
-		title:SetTextColor(ns.Theme.ClassColor(record.k))
+		title:SetTextColor(ns.Theme.ClassColor(record.k, "sidebar"))
 	else
-		title:SetTextColor(ns.Theme.ClassColor(conv.class))
+		title:SetTextColor(ns.Theme.ClassColor(conv.class, "sidebar"))
 	end
 	title:SetText(name)
 	body:SetText(ns.Emoji.Display(record.x))
