@@ -43,8 +43,10 @@ local function Candidates(conv)
 	local messages = conv.m or {}
 	-- Group and channel messages carry a sender; whisper messages do not.
 	for i = #messages, 1, -1 do
-		local sender = messages[i].s
-		if sender then add(ns.Util.DisplayName(sender)) end
+		local m = messages[i]
+		local sender = m.s
+		-- Outgoing messages are stored with your own name, which is never worth completing.
+		if sender and m.o ~= 1 and sender ~= ns.me then add(ns.Util.DisplayName(sender)) end
 	end
 	if #names == 0 and conv.name then
 		add(conv.nick or ns.Util.DisplayName(conv.name))
@@ -80,7 +82,20 @@ end
 
 function Complete.ShortcodeMatches(partial)
 	local all = ns.Emoji.Search(partial)
+	-- Prefix matches come first so ":sm" offers "smile" before names that merely contain it.
+	-- The needle is normalized the way Emoji.Search does it.
+	local needle = partial:lower():gsub("[%s_]", "")
+	local prefix, rest = {}, {}
+	for _, name in ipairs(all) do
+		local list = (name:gsub("_", "")):lower():sub(1, #needle) == needle and prefix or rest
+		list[#list + 1] = name
+	end
 	local matches = {}
-	for i = 1, math.min(#all, MAX_SHORTCODE_MATCHES) do matches[i] = all[i] end
+	for _, list in ipairs({ prefix, rest }) do
+		for _, name in ipairs(list) do
+			if #matches >= MAX_SHORTCODE_MATCHES then return matches end
+			matches[#matches + 1] = name
+		end
+	end
 	return matches
 end

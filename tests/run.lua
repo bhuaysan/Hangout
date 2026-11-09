@@ -2225,13 +2225,14 @@ local function BootWithWindow()
 		Create = function() end, SetCollapsed = function() end, Refresh = function() end,
 		ClearSearchFocus = function() end,
 	}
-	ns.MessageList = { Create = function() end, Refresh = function() end }
+	ns.MessageList = { Create = function() end, Refresh = function() end, HideTooltip = function() end }
 	ns.On("SELECTION_CHANGED", function(key)
 		calls.selected = key
 		if not key then calls.cleared = calls.cleared + 1 end
 	end)
 	ns.SettingsUI = { Create = function() end, Hide = function() end }
 	ns.EmojiPicker = { Hide = function() end }
+	ns.QuickSwitch = { Hide = function() end }
 	return ns, calls
 end
 
@@ -2572,10 +2573,12 @@ Test("marking everything read clears every chat but keeps requests as requests",
 	ns.db.conv["W:C D"].req = true
 	ns.session.conv["C:trade"] = { nextId = 3, m = {}, lastT = 0 }
 	ns.session.liveUnread["C:trade"] = 2
+	ns.session.liveUnread["C:ghost"] = 1
 	local changes = 0
 	ns.On("CONV_CHANGED", function() changes = changes + 1 end)
 
-	Equal(ns.Store.MarkAllRead(), 3)
+	Equal(ns.Store.MarkAllRead(), 4)
+	Equal(ns.session.liveUnread["C:ghost"], nil, "live unread without a stored chat is cleared")
 	Equal(changes, 1, "one CONV_CHANGED")
 	Equal(ns.Store.UnreadCount("W:A B", ns.db.conv["W:A B"]), 0)
 	Equal(ns.Store.UnreadCount("W:C D", ns.db.conv["W:C D"]), 0)
@@ -2936,6 +2939,8 @@ Test("copy text keeps link names and emoji shortcodes and drops markup", functio
 	Equal(plain("hi |TInterface\\Icons\\Foo:16|t there"), "hi  there")
 	Equal(plain("nice :heart: work"), "nice :heart: work")
 	Equal(plain("|cnIQ4:|Hitem:1::|h[Sword]|h|r"), "[Sword]")
+	Equal(plain("a||b"), "a|b")
+	Equal(plain("|cff00ff00x|r||y"), "x|y")
 end)
 
 Test("conversation text lists every message oldest first with its sender", function()
@@ -3013,6 +3018,39 @@ Test("tab completion offers full names by full or first name prefix", function()
 	Equal(#ns.Complete.Names(group, ""), 0)
 end)
 
+Test("name completion skips your own outgoing messages", function()
+	local ns = Boot()
+	local group = Conversation({
+		{ i = 1, t = 1, x = "a", s = "Anna Smith" },
+		{ i = 2, t = 2, x = "b", s = ns.me, o = 1 },
+		{ i = 3, t = 3, x = "c", s = ns.me },
+	}, { name = "party" })
+	local me = ns.Util.DisplayName(ns.me)
+	Equal(#ns.Complete.Names(group, me:sub(1, 2)), 0)
+	Equal(#ns.Complete.Names(group, "an"), 1)
+end)
+
+Test("shortcode matches list prefix matches before substring matches", function()
+	local ns = Boot()
+	local all = ns.Emoji.Search("sm")
+	local rank
+	for i, name in ipairs(all) do
+		if name:sub(1, 2) ~= "sm" then rank = rank or i else
+			if rank then
+				-- A prefix match sits behind a substring match in atlas order.
+				local matches = ns.Complete.ShortcodeMatches("sm")
+				Equal(matches[1]:sub(1, 2), "sm", "prefix first")
+				Equal(#matches <= 8, true)
+				local found = false
+				for _, m in ipairs(matches) do if m == name then found = true end end
+				Equal(found, true, name .. " survives the cut")
+				return
+			end
+		end
+	end
+	error("no prefix match behind a substring match for sm")
+end)
+
 Test("shortcode detection needs a colon, two word characters and the cursor behind them", function()
 	local ns = Boot()
 	local start, partial = ns.Complete.ShortcodeAt("hello :smi", 10)
@@ -3070,6 +3108,9 @@ Test("NextKey with unreadOnly only lands on unread chats", function()
 	Equal(ns.Keys.NextKey(Entries({ { "W:A B" }, { "W:C D" } }), "W:A B", 1, true), nil)
 	local requestOnly = Entries({ { "W:Amy One" }, { "W:Req Er", { req = true, unread = 4 } } })
 	Equal(ns.Keys.NextKey(requestOnly, "W:Amy One", 1, true), nil, "unread requests are skipped")
+	local muted = Entries({ { "W:Amy One" }, { "P:party", { unread = 2, mute = true } } })
+	Equal(ns.Keys.NextKey(muted, "W:Amy One", 1, true), nil, "muted unread chats are skipped")
+	Equal(ns.Keys.NextKey(muted, "W:Amy One", 1), "P:party", "but plain stepping still visits them")
 end)
 
 Test("NextKey agrees with the rows the sidebar builds", function()

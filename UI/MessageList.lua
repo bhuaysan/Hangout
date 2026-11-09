@@ -324,7 +324,8 @@ end
 -- Names in player: links open the same menu instead of the default chat's edit box.
 local function OnHyperlinkClick(self, link, text, button)
 	local playerName = link:match("^player:([^:]+)")
-	if playerName then
+	-- Shift, Ctrl and Alt keep their default meanings (such as pasting the name into the chat box).
+	if playerName and not IsModifierKeyDown() then
 		ShowPlayerMenu(self, ns.Util.NormalizeName(playerName))
 		return
 	end
@@ -790,6 +791,12 @@ local function InitLockedRow(frame, element)
 	end
 end
 
+-- Hides a link tooltip that belongs to a message row, for when the window goes away under it.
+function MessageList.HideTooltip()
+	local owner = GameTooltip:GetOwner()
+	if owner and owner.element ~= nil then GameTooltip:Hide() end
+end
+
 local function ResetRow(frame)
 	-- A recycled row can't send OnHyperlinkLeave, so its tooltip would stay up.
 	if GameTooltip:GetOwner() == frame then GameTooltip:Hide() end
@@ -973,7 +980,9 @@ end)
 
 -- Counts what arrives out of sight, so the jump pill can say how much was missed.
 ns.On("MESSAGE_ADDED", function(key, record, mention, recovered)
-	if scrollBox and key == ns.selectedKey and not recovered and ns.Window.IsVisible() and not IsFollowing() then
+	-- Your own messages are not news to you, so they never count as missed.
+	if scrollBox and key == ns.selectedKey and not recovered and not (record and record.o == 1)
+		and ns.Window.IsVisible() and not IsFollowing() then
 		newWhileAway = newWhileAway + 1
 	end
 	RefreshIfCurrent(key, record, mention, recovered)

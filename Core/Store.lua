@@ -241,7 +241,12 @@ end
 -- Returns whether anything was unread, so callers can decide what to announce.
 local function ClearUnread(key)
 	local conv = Store.Get(key)
-	if not conv then return false end
+	if not conv then
+		-- A chat can have live unread messages before any record of it is stored.
+		if not ns.session.liveUnread[key] then return false end
+		ns.session.liveUnread[key] = nil
+		return true
+	end
 	if (conv.unread or 0) == 0 and not ns.session.liveUnread[key] then return false end
 	conv.unread = nil
 	conv.readId = conv.nextId

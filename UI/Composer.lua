@@ -44,6 +44,10 @@ local function HidePopup()
 	if popup then popup:Hide() end
 end
 
+function Composer.HidePopup()
+	HidePopup()
+end
+
 local function PaintPopup()
 	for index, row in ipairs(popupRows) do
 		local name = suggestions[index]
@@ -85,8 +89,14 @@ local function AcceptSuggestion(name)
 	local text = box:GetText()
 	local cursor = box:GetCursorPosition()
 	local start = ns.Complete.ShortcodeAt(text, cursor)
-	if not start or not name then return end
+	-- Without a shortcode behind the cursor there is nothing to accept; close the popup so Enter sends.
+	if not start or not name then
+		HidePopup()
+		return false
+	end
 	local tail = text:sub(ns.Complete.CharToByte(text, cursor) + 1)
+	-- Word characters right after the cursor belong to the same shortcode, as in ":sm|ile".
+	tail = tail:gsub("^[%w_]*", "")
 	local head = text:sub(1, start - 1) .. ":" .. name .. ": "
 	box:SetText(head .. tail)
 	box:SetCursorPosition(ns.Complete.CharCount(head))
@@ -100,7 +110,7 @@ local function MoveSelection(step)
 end
 
 local function OnTabPressed()
-	if popup and popup:IsShown() then
+	if popup and popup:IsVisible() then
 		AcceptSuggestion(suggestions[selected])
 		return
 	end
@@ -130,7 +140,7 @@ end
 local function OnKeyDown(self, key)
 	if ns.Keys and ns.Keys.OnComposerKey and ns.Keys.OnComposerKey(self, key) then return end
 
-	if popup and popup:IsShown() then
+	if popup and popup:IsVisible() then
 		if key == "UP" then MoveSelection(-1) return end
 		if key == "DOWN" then MoveSelection(1) return end
 		return
@@ -155,7 +165,7 @@ local function OnKeyDown(self, key)
 end
 
 local function OnEscapePressed(self)
-	if popup and popup:IsShown() then
+	if popup and popup:IsVisible() then
 		HidePopup()
 	else
 		self:ClearFocus()
@@ -181,7 +191,7 @@ end
 
 local function OnEnterPressed(self)
 	if not ns.selectedKey then return end
-	if popup and popup:IsShown() then
+	if popup and popup:IsVisible() then
 		AcceptSuggestion(suggestions[selected])
 		return
 	end
@@ -328,4 +338,7 @@ ns.On("SELECTION_CHANGED", function(key)
 	tabState = nil
 	HidePopup()
 	box:SetText(conv and conv.draft or "")
+	-- A draft ending in ":smi" would otherwise open the popup on switching chats.
+	HidePopup()
 end)
+ns.On("WINDOW_HIDDEN", HidePopup)

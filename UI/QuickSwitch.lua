@@ -268,6 +268,8 @@ function QuickSwitch.IsShown()
 end
 
 function QuickSwitch.Show()
+	-- The faded window ignores the mouse and keyboard in combat, so the switcher would be stuck.
+	if ns.Window.IsFaded() then return end
 	if not frame then Create() end
 	frame:ClearAllPoints()
 	local anchor = ns.Window.IsVisible() and _G.HangoutWindow or UIParent

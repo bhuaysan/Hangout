@@ -39,7 +39,9 @@ function Keys.NextKey(list, currentKey, direction, unreadOnly)
 
 	for step = 1, count do
 		local entry = entries[(position - 1 + direction * step) % count + 1]
-		if entry.key ~= currentKey and (not unreadOnly or ns.Store.UnreadCount(entry.key, entry.conv) > 0) then
+		-- Muted chats are skipped when hunting for unread, like Store.NewestUnreadKey does.
+		if entry.key ~= currentKey and (not unreadOnly
+			or (not entry.conv.mute and ns.Store.UnreadCount(entry.key, entry.conv) > 0)) then
 			return entry.key
 		end
 	end

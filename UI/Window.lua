@@ -201,6 +201,7 @@ local function Create()
 		-- Hidden but still "shown" means the whole UI went away, as with Alt-Z.
 		hiddenWithUI = frame:IsShown()
 		UpdateActive()
+		ns.MessageList.HideTooltip()
 		ns.Fire("WINDOW_HIDDEN")
 	end)
 	frame:SetScript("OnShow", function()
@@ -397,6 +398,7 @@ end
 
 local function Fade()
 	faded = true
+	ns.MessageList.HideTooltip()
 	frame:SetAlpha(ns.Get("combatOpacity") / 100)
 	DisableMouse(frame)
 	ns.Sidebar.Refresh()
@@ -423,6 +425,8 @@ local function OnEnterCombat()
 	ns.Sidebar.ClearSearchFocus()
 	ns.SettingsUI.Hide()
 	ns.EmojiPicker.Hide()
+	ns.QuickSwitch.Hide()
+	ns.Composer.HidePopup()
 	if mode == "hide" then
 		hiddenForCombat = true
 		frame:Hide()

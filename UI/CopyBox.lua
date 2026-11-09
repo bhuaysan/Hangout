@@ -16,7 +16,9 @@ local original = ""
 -- [bracketed] name, textures vanish and :emoji: shortcodes stay as typed.
 function CopyBox.PlainText(text)
 	text = ns.Search.VisibleText(text or "")
-	return (text:gsub("|T.-|t", ""):gsub("|A.-|a", ""))
+	text = text:gsub("|T.-|t", ""):gsub("|A.-|a", "")
+	-- Last, so an escaped pipe cannot be mistaken for the start of a tag above.
+	return (text:gsub("||", "|"))
 end
 
 local function SelectAll()
