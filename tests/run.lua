@@ -3497,6 +3497,78 @@ Test("opening a group chat with the member list on lays out the window without e
 	ns.Window.Toggle()
 end)
 
+Test("a quote prefix names the sender and cuts long text on a character boundary", function()
+	local ns = Boot()
+	Equal(ns.Send.QuotePrefix("Pal", "short"), "[Pal: short] ")
+	local long = ns.Send.QuotePrefix("Pal", string.rep("a", 60))
+	Equal(long, "[Pal: " .. string.rep("a", 40) .. "\226\128\166] ")
+	local umlauts = ns.Send.QuotePrefix("Pal", string.rep("\195\164", 50))
+	Equal(umlauts, "[Pal: " .. string.rep("\195\164", 40) .. "\226\128\166] ")
+	Equal(ns.Send.QuotePrefix("Pal", "|cffa335ee|Hitem:1:2|h[Sword]|h|r"), "[Pal: [Sword]] ")
+end)
+
+Test("a message with a quote link gets a quote element", function()
+	local ns, key, conv = BootWithPeer()
+	Chat(ns, "CHAT_MSG_WHISPER", { text = "answer", name = "Pal Friend" })
+	conv.m[2].q = 1
+	local element = ns.MessageList.BuildElements(conv, 200)[3]
+	Equal(element.quote.id, 1)
+	Equal(element.quote.text, "hi there")
+	Equal(element.quote.sender, "Pal Friend")
+	Equal(ns.MessageList.BuildElements(conv, 200)[2].quote, nil)
+
+	conv.m[2].q = 99
+	Equal(ns.MessageList.BuildElements(conv, 200)[3].quote, nil, "a vanished message shows no quote")
+end)
+
+Test("a quote payload links the reply to the quoted message", function()
+	local ns, key, conv = BootWithPeer()
+	Chat(ns, "CHAT_MSG_WHISPER", { text = "answer", name = "Pal Friend" })
+	AddonMessage(ns, "Pal Friend", "1;Q;" .. ns.Protocol.Hash("answer") .. ";" .. ns.Protocol.Hash("hi there"))
+	Equal(conv.m[2].q, 1)
+	Equal(conv.m[1].q, nil)
+end)
+
+Test("a quote payload that arrives first waits for its chat message", function()
+	local ns, key, conv = BootWithPeer()
+	AddonMessage(ns, "Pal Friend", "1;Q;" .. ns.Protocol.Hash("answer") .. ";" .. ns.Protocol.Hash("hi there"))
+	Equal(conv.m[1].q, nil)
+	Chat(ns, "CHAT_MSG_WHISPER", { text = "answer", name = "Pal Friend" })
+	Equal(conv.m[2].q, 1)
+end)
+
+Test("a waiting quote payload expires", function()
+	local ns, key, conv = BootWithPeer()
+	AddonMessage(ns, "Pal Friend", "1;Q;" .. ns.Protocol.Hash("answer") .. ";" .. ns.Protocol.Hash("hi there"))
+	stubs.time = stubs.time + 31
+	Chat(ns, "CHAT_MSG_WHISPER", { text = "answer", name = "Pal Friend" })
+	Equal(conv.m[2].q, nil)
+end)
+
+Test("a reply to a Hangout user is sent unchanged and linked on its echo", function()
+	local ns, key, conv = BootWithPeer()
+	stubs.sent = {}
+	local reply = { key = key, id = 1, sender = "Pal Friend", snippet = "hi there" }
+	Equal(ns.Send.Text(key, "my answer", reply), true)
+	Equal(stubs.sent[1].text, "my answer")
+	Equal(LastSent().text, "1;Q;" .. ns.Protocol.Hash("my answer") .. ";" .. ns.Protocol.Hash("hi there"))
+	Chat(ns, "CHAT_MSG_WHISPER_INFORM", { text = "my answer", name = "Pal Friend" })
+	Equal(conv.m[2].q, 1)
+end)
+
+Test("a reply in a chat without Hangout users carries a visible quote", function()
+	local ns = Boot()
+	stubs.sent = {}
+	Chat(ns, "CHAT_MSG_GUILD", { text = "who is up for a raid tonight", name = "Some Guildie" })
+	local key = "G:Horde Heroes-Thunderstrike"
+	local reply = { key = key, id = 1, sender = "Some Guildie", snippet = "who is up for a raid tonight" }
+	Equal(ns.Send.Text(key, "me", reply), true)
+	Equal(stubs.sent[1].text, "[Some Guildie: who is up for a raid tonight] me")
+	Chat(ns, "CHAT_MSG_GUILD", { text = stubs.sent[1].text, name = ns.me })
+	local conv = ns.db.conv[key]
+	Equal(conv.m[#conv.m].q, nil)
+end)
+
 local failures = 0
 for _, test in ipairs(tests) do
 	local ok, err = xpcall(test.fn, debug.traceback)

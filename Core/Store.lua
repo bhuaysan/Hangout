@@ -46,6 +46,14 @@ function Store.Get(key)
 	return TableFor(key)[key]
 end
 
+-- Newest messages are the likeliest targets, so search from the end.
+function Store.FindMessage(conv, id)
+	for position = #conv.m, 1, -1 do
+		if conv.m[position].i == id then return conv.m[position] end
+	end
+	return nil
+end
+
 local function DropOldest(list, count)
 	local size = #list
 	for i = 1, size - count do
