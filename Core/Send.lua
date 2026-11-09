@@ -26,6 +26,13 @@ local function UnitEnd(text, position)
 		if not linkEnd then
 			_, linkEnd = text:find("^|H.-|h.-|h", position)
 		end
+		if not linkEnd then
+			-- Texture and atlas tags are just as unbreakable as links.
+			_, linkEnd = text:find("^|T.-|t", position)
+		end
+		if not linkEnd then
+			_, linkEnd = text:find("^|A.-|a", position)
+		end
 		if linkEnd then return linkEnd end
 	end
 	if byte >= 240 then return position + 3 end
@@ -76,6 +83,13 @@ local function IsCurrentChannel(key, channelIndex)
 	return actual == wanted or actual:sub(1, #wanted + 3) == wanted .. " - "
 end
 
+-- GetChannelName also takes a channel name; it returns 0 when not joined.
+local function ChannelIndexByName(name)
+	local id = GetChannelName(name)
+	if canaccessvalue(id) and type(id) == "number" and id > 0 then return id end
+	return nil
+end
+
 local function SenderFor(key)
 	local prefix = key:sub(1, 1)
 	local rest = key:sub(3)
@@ -88,8 +102,16 @@ local function SenderFor(key)
 		return function(part) C_BattleNet.SendWhisper(accountID, part) end
 	elseif prefix == "C" then
 		local conv = ns.Store.Get(key)
-		local channelIndex = conv and conv.channelIndex
-		if not channelIndex or not IsCurrentChannel(key, channelIndex) then return nil end
+		if not conv then return nil end
+		local channelIndex = conv.channelIndex
+		if not channelIndex or not IsCurrentChannel(key, channelIndex) then
+			-- The number is stale, but the channel may still be joined under another one.
+			-- A name saved without a base name carries its old number, which the lookup can't use.
+			local name = (conv.name or key:sub(3)):gsub("^%d+%. ", "")
+			channelIndex = ChannelIndexByName(name)
+			if not channelIndex then return nil end
+			conv.channelIndex = channelIndex
+		end
 		return function(part) C_ChatInfo.SendChatMessage(part, "CHANNEL", nil, channelIndex) end
 	end
 

@@ -213,8 +213,10 @@ end
 -- Before guild data arrives this returns a memory-only key.
 function Identity.GuildKey(prefix)
 	local guildName = GetGuildInfo("player")
-	if canaccessvalue(guildName) and guildName then
-		return prefix .. ":" .. guildName .. "-" .. GetNormalizedRealmName()
+	-- The realm name can still be nil shortly after login.
+	local realm = GetNormalizedRealmName()
+	if canaccessvalue(guildName) and guildName and canaccessvalue(realm) and realm then
+		return prefix .. ":" .. guildName .. "-" .. realm
 	end
 	return prefix .. ":?"
 end

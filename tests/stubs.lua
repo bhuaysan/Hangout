@@ -96,9 +96,11 @@ function stubs.Install()
 	_G.Settings = Tolerant()
 	_G.ScrollBoxConstants = {}
 	stubs.chatFilters = {}
+	stubs.lastTell = nil
 	_G.ChatFrameUtil = {
 		AddMessageEventFilter = function(event, filter) stubs.chatFilters[event] = filter end,
 		RemoveMessageEventFilter = function(event) stubs.chatFilters[event] = nil end,
+		SetLastTellTarget = function(target, chatType) stubs.lastTell = { target = target, chatType = chatType } end,
 	}
 	_G.C_FriendList = {
 		ShowFriends = function() end,
@@ -114,6 +116,16 @@ function stubs.Install()
 	end
 	_G.GetGuildInfo = function() return stubs.guildName end
 	_G.GetChannelName = function(index)
+		if type(index) == "string" then
+			local wanted = index:lower()
+			for id, channelName in pairs(stubs.channels) do
+				local actual = channelName:lower()
+				if actual == wanted or actual:sub(1, #wanted + 3) == wanted .. " - " then
+					return id, channelName
+				end
+			end
+			return 0, nil
+		end
 		local name = stubs.channels[index]
 		if name then return index, name end
 		return 0, nil

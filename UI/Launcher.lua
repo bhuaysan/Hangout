@@ -46,11 +46,9 @@ function Launcher.UpdateVisibility()
 end
 
 -- Records whether alerts are silenced, without touching the game's status.
+-- Always announces: Settings saves the value before calling this, so a
+-- "nothing changed" shortcut would leave the profile bar stale.
 function Launcher.ApplyDnd(enabled)
-	if (ns.Get("dnd") and true or false) == enabled then
-		Launcher.UpdateDndIcon()
-		return
-	end
 	ns.Set("dnd", enabled)
 	Launcher.UpdateDndIcon()
 	ns.Fire("DND_CHANGED")

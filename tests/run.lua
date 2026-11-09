@@ -2718,6 +2718,165 @@ Test("unread badges cap their number", function()
 	Equal(ns.Util.BadgeText(100), "99+")
 end)
 
+Test("a channel that moved to another number is found by name", function()
+	local ns = Boot()
+	Chat(ns, "CHAT_MSG_CHANNEL", { text = "x", name = "A B", base = "Trade", channelIndex = 5 })
+	stubs.channels[7] = "Trade - City"
+	Equal(ns.Send.Text("C:trade", "selling"), true)
+	Equal(ns.Store.Get("C:trade").channelIndex, 7, "saved number updated")
+	Equal(stubs.sent[1].target, 7)
+end)
+
+Test("a channel that isn't joined at all is unavailable", function()
+	local ns = Boot()
+	Chat(ns, "CHAT_MSG_CHANNEL", { text = "x", name = "A B", base = "Trade", channelIndex = 5 })
+	local ok, why = ns.Send.Text("C:trade", "selling")
+	Equal(ok, false)
+	Equal(why, "unavailable")
+	Equal(#stubs.sent, 0)
+end)
+
+Test("the guild key is memory-only while the realm name is nil", function()
+	local ns = Boot()
+	Equal(ns.Identity.GuildKey("G"), "G:Horde Heroes-Thunderstrike")
+	_G.GetNormalizedRealmName = function() return nil end
+	Equal(ns.Identity.GuildKey("G"), "G:?")
+end)
+
+Test("a database without a schema is replaced with a notice", function()
+	local ns = Boot({ conv = {} })
+	Equal(ns.db.schema, 3)
+	Equal(type(ns.db.conv), "table")
+	local noticed = false
+	for _, line in ipairs(stubs.printed) do
+		if tostring(line):find("couldn't be read", 1, true) then noticed = true end
+	end
+	Equal(noticed, true, "notice printed")
+end)
+
+Test("a schema 3 database missing its theme table is repaired", function()
+	local ns = Boot({ schema = 3, settings = {}, chars = {}, conv = {} })
+	Equal(type(ns.db.theme), "table")
+	Equal(type(ns.db.theme.custom), "table")
+	local ok, err = pcall(ns.Theme.Apply)
+	Equal(ok, true, tostring(err))
+end)
+
+Test("hidden whispers still set the reply target", function()
+	local ns = Boot()
+	ns.Set("hideWhispers", true)
+	ns.Filter.Apply()
+	local filter = stubs.chatFilters["CHAT_MSG_WHISPER"]
+	Equal(filter(nil, "CHAT_MSG_WHISPER", "hi", "Thrall Hellscream", "", "", "", ""), true)
+	Equal(stubs.lastTell.target, "Thrall Hellscream")
+	Equal(stubs.lastTell.chatType, "WHISPER")
+	stubs.lastTell = nil
+	Equal(stubs.chatFilters["CHAT_MSG_WHISPER_INFORM"](nil, "CHAT_MSG_WHISPER_INFORM", "hi", "Jaina", "", "", "", ""), true)
+	Equal(stubs.lastTell, nil)
+	Equal(filter(nil, "CHAT_MSG_WHISPER", "hi", "Game Master", "", "", "", "GM"), false)
+	Equal(stubs.lastTell, nil)
+	Equal(stubs.chatFilters["CHAT_MSG_BN_WHISPER"](nil, "CHAT_MSG_BN_WHISPER", "hi", "Pal", "", "", "", ""), true)
+	Equal(stubs.lastTell.chatType, "BN_WHISPER")
+end)
+
+Test("the Settings checkbox path still announces Do Not Disturb", function()
+	local ns = Boot()
+	stubs.lockdown = true
+	local changes = 0
+	ns.On("DND_CHANGED", function() changes = changes + 1 end)
+	ns.Set("dnd", true)
+	ns.Launcher.SetDnd(ns.Get("dnd"))
+	Equal(changes, 1)
+end)
+
+Test("a hello is retried when an unanswered person writes to the open chat", function()
+	local ns = Boot()
+	stubs.serverTime = 100
+	Chat(ns, "CHAT_MSG_WHISPER", { text = "hi", name = "Pal Friend" })
+	ns.activeKey = "W:Pal Friend"
+	ns.Protocol.OnOpened("W:Pal Friend")
+	Equal(#stubs.addonSent, 1)
+	Chat(ns, "CHAT_MSG_WHISPER", { text = "hello?", name = "Pal Friend", lineID = 2 })
+	Equal(#stubs.addonSent, 2)
+	Equal(stubs.addonSent[2].text, "1;H;1")
+	AddonMessage(ns, "Pal Friend", "1;H;0")
+	local before = #stubs.addonSent
+	Chat(ns, "CHAT_MSG_WHISPER", { text = "again", name = "Pal Friend", lineID = 3 })
+	for index = before + 1, #stubs.addonSent do
+		assert(stubs.addonSent[index].text ~= "1;H;1", "no hello to a known peer")
+	end
+end)
+
+Test("Escape on a prompt closes only the prompt", function()
+	local ns = Boot()
+	local called = false
+	ns.Prompt.Confirm("Sure?", "OK", function() called = true end)
+	local frame
+	for _, candidate in ipairs(stubs.frames) do
+		if rawget(candidate, "OnKeyDown") then frame = candidate end
+	end
+	local hides = 0
+	rawset(frame, "Hide", function() hides = hides + 1 end)
+	frame.OnKeyDown(frame, "ESCAPE")
+	Equal(hides, 1)
+	Equal(called, false)
+	frame.OnKeyDown(frame, "A")
+	Equal(hides, 1)
+end)
+
+Test("long messages never split a texture or atlas tag", function()
+	local ns = Boot()
+	local texture = "|TInterface\\Icons\\Foo:16:16|t"
+	local parts = ns.Send.SplitMessage(string.rep("a", 245) .. texture)
+	Equal(#parts, 2)
+	Equal(parts[1], string.rep("a", 245))
+	Equal(parts[2], texture)
+	local atlas = "|Aquest-icon:16:16|a"
+	parts = ns.Send.SplitMessage(string.rep("a", 245) .. atlas)
+	Equal(#parts, 2)
+	Equal(parts[1], string.rep("a", 245))
+	Equal(parts[2], atlas)
+end)
+
+Test("Store.IsEmpty reports whether any conversation exists", function()
+	local ns = Boot()
+	Equal(ns.Store.IsEmpty(), true)
+	Chat(ns, "CHAT_MSG_WHISPER", { text = "hi", name = "Thrall Hellscream", guid = "Player-1-ABC" })
+	Equal(ns.Store.IsEmpty(), false)
+	ns.Store.Delete("W:Thrall Hellscream")
+	Equal(ns.Store.IsEmpty(), true)
+end)
+
+Test("emoji search ignores spaces and underscores", function()
+	local ns = Boot()
+	local function Has(query, name)
+		for _, found in ipairs(ns.Emoji.Search(query)) do
+			if found == name then return true end
+		end
+		return false
+	end
+	assert(Has("thumbs up", "thumbsup"))
+	assert(Has("crossed swords", "crossed_swords"))
+	assert(Has("crossed_swords", "crossed_swords"))
+	assert(Has("crossedsw", "crossed_swords"))
+	Equal(#ns.Emoji.Search("zzzz-nothing"), 0)
+end)
+
+Test("Game Master messages are flagged in the list and the glance strip", function()
+	local ns = Boot()
+	Chat(ns, "CHAT_MSG_WHISPER", { text = "hello", name = "Game Master", flags = "GM" })
+	Chat(ns, "CHAT_MSG_WHISPER", { text = "hi", name = "Other Person" })
+	local gmConv, normalConv = ns.db.conv["W:Game Master"], ns.db.conv["W:Other Person"]
+	Equal(ns.MessageList.BuildElements(gmConv, 200)[2].gm, true)
+	Equal(ns.MessageList.BuildElements(normalConv, 200)[2].gm, false)
+	ns.Glance.Hide()
+	ns.Glance.Show("W:Game Master", gmConv, gmConv.m[1])
+	ns.Glance.Show("W:Other Person", normalConv, normalConv.m[1])
+	local lines = ns.Glance.Lines()
+	assert(lines[1].name:find("GM$"), "GM line should end with GM")
+	assert(not lines[2].name:find("GM$"), "normal line should not")
+end)
+
 local failures = 0
 for _, test in ipairs(tests) do
 	local ok, err = xpcall(test.fn, debug.traceback)

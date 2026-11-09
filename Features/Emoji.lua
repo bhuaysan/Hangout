@@ -62,12 +62,13 @@ function Emoji.IndexOf(name)
 end
 
 -- Emoji whose name contains the query, in the same order as the tabs.
+-- Spaces and underscores are ignored on both sides: "thumbs up" has to find "thumbsup".
 function Emoji.Search(query)
-	local needle = query:lower():gsub("%s+", "_")
+	local needle = query:lower():gsub("[%s_]", "")
 	local matches = {}
 	for _, group in ipairs(Emoji.GROUPS) do
 		for _, name in ipairs(group.names) do
-			if name:find(needle, 1, true) then
+			if (name:gsub("_", "")):find(needle, 1, true) then
 				matches[#matches + 1] = name
 			end
 		end

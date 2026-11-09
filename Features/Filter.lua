@@ -104,8 +104,15 @@ end
 
 -- Game Master whispers must always stay visible in normal chat. The game skips
 -- this filter for restricted messages, so those stay visible as well.
-local function HideWhisper(_, _, _, _, _, _, _, specialFlags)
-	return specialFlags ~= "GM"
+-- The default chat frame records the reply target only after the filters pass,
+-- so a hidden whisper has to set it here or /r would have no one to answer.
+local function HideWhisper(_, event, _, playerName, _, _, _, specialFlags)
+	if specialFlags == "GM" then return false end
+	if (event == "CHAT_MSG_WHISPER" or event == "CHAT_MSG_BN_WHISPER")
+		and canaccessvalue(playerName) and type(playerName) == "string" and playerName ~= "" then
+		ChatFrameUtil.SetLastTellTarget(playerName, event:sub(10))
+	end
+	return true
 end
 
 Filter.HideWhisper = HideWhisper

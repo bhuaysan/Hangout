@@ -98,6 +98,7 @@ function Toast.Show(key, conv, record)
 	else
 		title:SetTextColor(ns.Theme.ClassColor(conv.class, "sidebar"))
 	end
+	if record.f == ns.Capture.FLAG_GM then name = name .. "  GM" end
 	title:SetText(name)
 	ShowCrest(record.s and record.k or conv.class)
 	body:SetText(ns.Emoji.Display(record.x))

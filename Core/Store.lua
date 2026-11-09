@@ -324,3 +324,8 @@ function Store.List()
 	end)
 	return result
 end
+
+-- For callers that only need to know whether any conversation exists.
+function Store.IsEmpty()
+	return next(ns.db.conv) == nil and next(ns.session.conv) == nil
+end

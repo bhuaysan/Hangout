@@ -333,6 +333,12 @@ end
 
 ns.On("MESSAGE_ADDED", function(key, record)
 	if record.o == 1 then return end
+	-- Our hello is dropped while they have no conversation with us, so try again
+	-- once they've written, until they answer.
+	if not peers[key] then
+		helloSent[key] = nil
+		if key == ns.activeKey then Protocol.OnOpened(key) end
+	end
 	if typingUntil[key] then
 		typingUntil[key] = nil
 		ns.Fire("TYPING_CHANGED")

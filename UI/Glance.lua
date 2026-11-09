@@ -145,9 +145,11 @@ end
 
 function Glance.Show(key, conv, record)
 	if not frame then Create() end
+	local name = ShortName(key, conv)
+	if record.f == ns.Capture.FLAG_GM then name = name .. "  GM" end
 	lines[#lines + 1] = {
 		key = key,
-		name = ShortName(key, conv),
+		name = name,
 		class = conv.class,
 		text = ns.Emoji.Display(record.x),
 	}

@@ -25,7 +25,18 @@ local function Create()
 	frame:SetWidth(WIDTH)
 	frame:EnableMouse(true)
 	frame:Hide()
-	tinsert(UISpecialFrames, "HangoutPrompt")
+	-- Not in UISpecialFrames: the game hides every listed frame on one Escape,
+	-- which would close the whole Hangout window along with this prompt.
+	frame:EnableKeyboard(true)
+	frame:SetScript("OnKeyDown", function(self, key)
+		local safe = not InCombatLockdown()
+		if key == "ESCAPE" then
+			if safe then self:SetPropagateKeyboardInput(false) end
+			self:Hide()
+		elseif safe then
+			self:SetPropagateKeyboardInput(true)
+		end
+	end)
 	ns.Widgets.RoundedFill(frame, "sidebar"):SetAllPoints()
 
 	message = ns.Widgets.Text(frame, "HangoutFont", "text")
@@ -55,6 +66,13 @@ local function Open(text, label, withField, initial, callback)
 	holder:SetShown(withField)
 	field:SetText(initial or "")
 	frame:SetHeight(withField and HEIGHT_WITH_FIELD or HEIGHT_WITHOUT_FIELD)
+	-- Protected in combat; a frame that swallows keys there is worse than no Escape.
+	if InCombatLockdown() then
+		frame:EnableKeyboard(false)
+	else
+		frame:SetPropagateKeyboardInput(true)
+		frame:EnableKeyboard(true)
+	end
 	frame:Show()
 	if withField then
 		field:SetFocus()

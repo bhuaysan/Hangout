@@ -120,6 +120,7 @@ function MessageList.BuildElements(conv, limit, live, unreadAfterId)
 			kind = "message",
 			id = message.i,
 			outgoing = message.o == 1,
+			gm = message.f == ns.Capture.FLAG_GM,
 			sender = sender,
 			class = ClassOf(message, conv),
 			mention = message.s ~= nil and message.o ~= 1 and ns.Alerts.IsMention(message.x),
@@ -386,6 +387,9 @@ local function BuildRow(frame)
 	frame.sender = ns.Widgets.Text(frame, "HangoutFontBold", "text")
 	frame.sender:SetPoint("TOPLEFT", TEXT_LEFT, -4)
 
+	frame.gmTag = ns.Widgets.Text(frame, "HangoutFontSmallBold", "accent")
+	frame.gmTag:SetText("GM")
+
 	frame.time = ns.Widgets.Text(frame, "HangoutFontSmall", "muted")
 
 	frame.body = ns.Widgets.Text(frame, "HangoutMessageFont", "text")
@@ -429,8 +433,10 @@ local function LayoutPlainMessage(frame, element)
 	frame.body:SetPoint("TOPLEFT", TEXT_LEFT, top)
 	frame.body:SetPoint("TOPRIGHT", -SIDE_PADDING, top)
 
+	frame.gmTag:ClearAllPoints()
+	frame.gmTag:SetPoint("LEFT", frame.sender, "RIGHT", 6, 0)
 	frame.time:ClearAllPoints()
-	frame.time:SetPoint("LEFT", frame.sender, "RIGHT", 8, 0)
+	frame.time:SetPoint("LEFT", element.gm and frame.gmTag or frame.sender, "RIGHT", 8, 0)
 
 	if element.head then
 		frame.sender:SetText(element.sender)
@@ -465,7 +471,8 @@ local function LayoutBubble(frame, element)
 		frame.time:SetPoint("BOTTOMLEFT", frame.bubble, "BOTTOMRIGHT", BUBBLE_TIME_GAP, 2)
 	end
 	-- A message sent from another character still says which one.
-	frame.time:SetText(outgoing and element.sender ~= "You" and (element.sender .. "  " .. element.time) or element.time)
+	local timeText = outgoing and element.sender ~= "You" and (element.sender .. "  " .. element.time) or element.time
+	frame.time:SetText(element.gm and ("GM  " .. timeText) or timeText)
 end
 
 local function OnPillClick(self)
@@ -531,6 +538,7 @@ local function InitRow(frame, element)
 	frame.bubble:SetShown(isBubble)
 	frame.body:SetShown(isMessage)
 	frame.sender:SetShown(isMessage and element.head and not isBubble)
+	frame.gmTag:SetShown(isMessage and element.head and not isBubble and element.gm)
 	frame.time:SetShown(isMessage and element.head)
 	local hasCrest = isMessage and element.head and not (isBubble and element.outgoing)
 	ns.Widgets.SetClassCrest(frame.crest, hasCrest and element.class or nil)

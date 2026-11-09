@@ -312,7 +312,7 @@ end
 local function UpdateTitle()
 	if not frame then return end
 	local conv = ns.selectedKey and ns.Store.Get(ns.selectedKey)
-	local hasChats = conv ~= nil or #ns.Store.List() > 0
+	local hasChats = conv ~= nil or not ns.Store.IsEmpty()
 	local showsChat = conv ~= nil and not settingsOpen
 
 	if settingsOpen then

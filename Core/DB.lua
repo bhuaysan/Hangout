@@ -36,6 +36,9 @@ function DB.Init()
 
 	if HangoutDB == nil then
 		HangoutDB = NewDatabase()
+	elseif type(HangoutDB) ~= "table" or type(HangoutDB.schema) ~= "number" then
+		HangoutDB = NewDatabase()
+		ns.Print("Your saved history couldn't be read and was reset.")
 	end
 
 	if HangoutDB.schema > DB.SCHEMA then
@@ -50,6 +53,11 @@ function DB.Init()
 		DB.migrations[version](HangoutDB)
 		HangoutDB.schema = version + 1
 	end
+	-- Migrations don't create these, so a damaged save could lack them.
+	for _, field in ipairs({ "settings", "theme", "chars", "conv" }) do
+		if type(HangoutDB[field]) ~= "table" then HangoutDB[field] = {} end
+	end
+	if type(HangoutDB.theme.custom) ~= "table" then HangoutDB.theme.custom = {} end
 	ns.db = HangoutDB
 end
 
