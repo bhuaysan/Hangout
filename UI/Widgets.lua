@@ -34,6 +34,7 @@ local STATUS_ICON = {
 	dnd = "Interface\\FriendsFrame\\StatusIcon-DnD",
 	offline = "Interface\\FriendsFrame\\StatusIcon-Offline",
 }
+Widgets.STATUS_ICON = STATUS_ICON
 local BATTLE_NET_CREST = "Interface\\FriendsFrame\\Battlenet-Portrait"
 local ICON_INDEX = {}
 for index, name in ipairs(ICON_NAMES) do
@@ -82,6 +83,11 @@ function Widgets.Text(frame, fontObject, token)
 	Track(text, token, true)
 	text:SetJustifyH("LEFT")
 	return text
+end
+
+-- Colors an existing text widget (such as an EditBox) from a theme token.
+function Widgets.TrackText(widget, token)
+	Track(widget, token, true)
 end
 
 -- Swaps a themed text's font. A font object brings its own shadow, so the theme's goes back on.

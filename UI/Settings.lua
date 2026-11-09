@@ -1,4 +1,5 @@
 local _, ns = ...
+local L = ns.L
 
 local SettingsUI = {}
 ns.SettingsUI = SettingsUI
@@ -254,7 +255,7 @@ local function ThemeStringRow()
 	holder:SetPoint("LEFT", content, "TOPLEFT", LEFT, top - ROW_HEIGHT / 2)
 	field:SetScript("OnEnterPressed", field.ClearFocus)
 
-	local export = ns.Widgets.FlatButton(content, "Export", 64)
+	local export = ns.Widgets.FlatButton(content, L["Export"], 100)
 	export:SetPoint("LEFT", holder, "RIGHT", 8, 0)
 	export:SetScript("OnClick", function()
 		field:SetText(ns.Theme.Export())
@@ -262,14 +263,14 @@ local function ThemeStringRow()
 		field:HighlightText()
 	end)
 
-	local import = ns.Widgets.FlatButton(content, "Import", 64)
+	local import = ns.Widgets.FlatButton(content, L["Import"], 100)
 	import:SetPoint("LEFT", export, "RIGHT", 6, 0)
 	import:SetScript("OnClick", function()
 		if ns.Theme.Import(field:GetText()) then
 			RefreshAll()
-			ns.Print("Theme imported.")
+			ns.Print(L["Theme imported."])
 		else
-			ns.Print("That isn't a valid Hangout theme string.")
+			ns.Print(L["That isn't a valid Hangout theme string."])
 		end
 	end)
 end
@@ -311,18 +312,18 @@ local function ThemeOptions()
 end
 
 local function BuildAppearance()
-	Choice("Theme", ThemeOptions(), ns.Theme.ActiveName, function(name)
+	Choice(L["Theme"], ThemeOptions(), ns.Theme.ActiveName, function(name)
 		ns.Theme.SetPreset(name)
 		RefreshAll()
 	end)
-	Stepper("Message text size", "messageSize", 10, 22, 1, nil, ns.Theme.Apply)
-	Stepper("Window opacity", "windowOpacity", ns.Theme.MIN_OPACITY, 100, 5, "%", ns.Theme.Apply)
+	Stepper(L["Message text size"], "messageSize", 10, 22, 1, nil, ns.Theme.Apply)
+	Stepper(L["Window opacity"], "windowOpacity", ns.Theme.MIN_OPACITY, 100, 5, "%", ns.Theme.Apply)
 	for _, entry in ipairs(ns.Theme.CUSTOMIZABLE) do
 		ColorRow(entry)
 	end
 
 	local top = NextRow()
-	local reset = ns.Widgets.FlatButton(content, "Reset colors", 110)
+	local reset = ns.Widgets.FlatButton(content, L["Reset colors"], 150)
 	reset:SetPoint("LEFT", content, "TOPLEFT", LEFT, top - ROW_HEIGHT / 2)
 	reset:SetScript("OnClick", function()
 		ns.Theme.ResetCustom()
@@ -337,61 +338,64 @@ local function SoundChoice(text, category)
 end
 
 local function BuildNotifications()
-	Toggle("Do Not Disturb", "dnd", function() ns.Launcher.SetDnd(ns.Get("dnd")) end)
-	SoundChoice("Whisper sound", "Whisper")
-	SoundChoice("Group sound", "Group")
-	SoundChoice("Mention sound", "Mention")
-	Toggle("Glance strip for whispers", "toastWhisper")
-	Toggle("Popups for group chat", "toastGroup")
-	Toggle("Popups for mentions", "toastMention")
-	Toggle("Flash taskbar on whispers", "flashWhisper")
-	Toggle("Flash taskbar on group chat", "flashGroup")
-	Toggle("Flash taskbar on mentions", "flashMention")
-	ListRow("Extra words", "keywords", ns.Alerts.SetKeywords)
-	Note("Your first name always counts as a mention. Separate extra words with commas.")
+	Toggle(L["Do Not Disturb"], "dnd", function() ns.Launcher.SetDnd(ns.Get("dnd")) end)
+	SoundChoice(L["Whisper sound"], "Whisper")
+	SoundChoice(L["Group sound"], "Group")
+	SoundChoice(L["Mention sound"], "Mention")
+	Toggle(L["Glance strip for whispers"], "toastWhisper")
+	Toggle(L["Popups for group chat"], "toastGroup")
+	Toggle(L["Popups for mentions"], "toastMention")
+	Toggle(L["Flash taskbar on whispers"], "flashWhisper")
+	Toggle(L["Flash taskbar on group chat"], "flashGroup")
+	Toggle(L["Flash taskbar on mentions"], "flashMention")
+	Note(L["Quiet automatically"])
+	Toggle(L["In dungeons, raids and PvP instances"], "quietInInstance", function() ns.Quiet.Update() end)
+	Toggle(L["During raid combat"], "quietInRaidCombat", function() ns.Quiet.Update() end)
+	ListRow(L["Extra words"], "keywords", ns.Alerts.SetKeywords)
+	Note(L["Your first name always counts as a mention. Separate extra words with commas."])
 end
 
 local function BuildSpamControl()
-	Toggle("Put strangers' whispers in Requests", "requestsEnabled")
-	RuleRow("Blocked words", "blockWords")
-	RuleRow("Hide in channels", "channelHideWords")
-	RuleRow("Only show in channels", "channelOnlyWords")
-	Stepper("Ignore channel repeats within", "channelRepeatSeconds", 0, 300, 30, " sec")
-	RuleRow("Blocked players", "blockedPlayers")
-	Note("Separate entries with commas. Blocked words apply to strangers and public channels.")
-	Note("These rules only affect Hangout. Normal chat still shows everything.")
+	Toggle(L["Put strangers' whispers in Requests"], "requestsEnabled")
+	RuleRow(L["Blocked words"], "blockWords")
+	RuleRow(L["Hide in channels"], "channelHideWords")
+	RuleRow(L["Only show in channels"], "channelOnlyWords")
+	Stepper(L["Ignore channel repeats within"], "channelRepeatSeconds", 0, 300, 30, L[" sec"])
+	RuleRow(L["Blocked players"], "blockedPlayers")
+	Note(L["Separate entries with commas. Blocked words apply to strangers and public channels."])
+	Note(L["These rules only affect Hangout. Normal chat still shows everything."])
 	local counter = Note("")
 	refreshers[#refreshers + 1] = function()
-		counter:SetText("Filtered this session: " .. ns.Filter.BlockedCount())
+		counter:SetText(L["Filtered this session: %d"]:format(ns.Filter.BlockedCount()))
 	end
 end
 
 local function BuildBehavior()
-	SettingChoice("In combat", "combatMode", {
-		{ value = "fade", label = "Fade" },
-		{ value = "hide", label = "Hide" },
-		{ value = "off", label = "Stay visible" },
+	SettingChoice(L["In combat"], "combatMode", {
+		{ value = "fade", label = L["Fade"] },
+		{ value = "hide", label = L["Hide"] },
+		{ value = "off", label = L["Stay visible"] },
 	})
-	Stepper("Faded opacity", "combatOpacity", 5, 60, 5, "%")
-	Toggle("Show others when I'm typing", "sendTyping")
-	Toggle("Send read receipts", "sendReadReceipts")
-	Toggle("Hide whispers from normal chat", "hideWhispers", function() ns.Filter.Apply() end)
-	Toggle("Show minimap button", "showMinimap", function() ns.Launcher.UpdateVisibility() end)
+	Stepper(L["Faded opacity"], "combatOpacity", 5, 60, 5, "%")
+	Toggle(L["Show others when I'm typing"], "sendTyping")
+	Toggle(L["Send read receipts"], "sendReadReceipts")
+	Toggle(L["Hide whispers from normal chat"], "hideWhispers", function() ns.Filter.Apply() end)
+	Toggle(L["Show minimap button"], "showMinimap", function() ns.Launcher.UpdateVisibility() end)
 end
 
 local function BuildHistory()
-	Stepper("Keep whispers for", "retentionWhisperDays", 30, 360, 30, " days")
-	Stepper("Keep guild and group for", "retentionGroupDays", 7, 91, 7, " days")
-	Stepper("Keep saved channels for", "retentionChannelDays", 7, 91, 7, " days")
-	Stepper("Messages per chat", "perChatCap", 100, 5000, 100)
-	Stepper("Messages in total", "globalCap", 2000, 50000, 2000)
-	Note("Old messages are removed when you log in. Right-click a channel to save its history.")
+	Stepper(L["Keep whispers for"], "retentionWhisperDays", 30, 360, 30, L[" days"])
+	Stepper(L["Keep guild and group for"], "retentionGroupDays", 7, 91, 7, L[" days"])
+	Stepper(L["Keep saved channels for"], "retentionChannelDays", 7, 91, 7, L[" days"])
+	Stepper(L["Messages per chat"], "perChatCap", 100, 5000, 100)
+	Stepper(L["Messages in total"], "globalCap", 2000, 50000, 2000)
+	Note(L["Old messages are removed when you log in. Right-click a channel to save its history."])
 end
 
 local function BuildAbout()
 	Note("Hangout " .. ns.version)
-	Note("Emoji graphics by Twemoji contributors, licensed under CC-BY 4.0.")
-	Note("See Media\\TWEMOJI-LICENSE.txt or creativecommons.org/licenses/by/4.0")
+	Note(L["Emoji graphics by Twemoji contributors, licensed under CC-BY 4.0."])
+	Note(L["See Media\\TWEMOJI-LICENSE.txt or creativecommons.org/licenses/by/4.0"])
 end
 
 local function RemoveEscapeEntry(name)
@@ -444,12 +448,12 @@ function SettingsUI.Create(window, header)
 	scroller:SetScrollChild(root)
 	scroller:SetScript("OnSizeChanged", function(self, width) root:SetWidth(width) end)
 
-	AddSection("APPEARANCE", BuildAppearance)
-	AddSection("NOTIFICATIONS", BuildNotifications)
-	AddSection("SPAM CONTROL", BuildSpamControl)
-	AddSection("BEHAVIOR", BuildBehavior)
-	AddSection("HISTORY", BuildHistory)
-	AddSection("ABOUT", BuildAbout)
+	AddSection(L["APPEARANCE"], BuildAppearance)
+	AddSection(L["NOTIFICATIONS"], BuildNotifications)
+	AddSection(L["SPAM CONTROL"], BuildSpamControl)
+	AddSection(L["BEHAVIOR"], BuildBehavior)
+	AddSection(L["HISTORY"], BuildHistory)
+	AddSection(L["ABOUT"], BuildAbout)
 	openSection = sections[1]
 	LayoutSections()
 end
@@ -480,9 +484,9 @@ end
 function SettingsUI.Init()
 	local page = CreateFrame("Frame")
 	local open = CreateFrame("Button", nil, page, "UIPanelButtonTemplate")
-	open:SetSize(200, 26)
+	open:SetSize(240, 26)
 	open:SetPoint("TOPLEFT", 16, -16)
-	open:SetText("Open Hangout settings")
+	open:SetText(L["Open Hangout settings"])
 	open:SetScript("OnClick", function()
 		HideUIPanel(SettingsPanel)
 		ns.Window.OpenSettings()

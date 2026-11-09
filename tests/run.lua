@@ -1861,6 +1861,96 @@ Test("search resumes where it paused and stops at the result limit", function()
 	Equal(#state.results, 200)
 end)
 
+Test("ParseQuery splits filters from the words to find", function()
+	local ns = Boot()
+	local plain = ns.Search.ParseQuery("  Hello World ")
+	Equal(plain.needle, "hello world")
+	Equal(plain.from, nil)
+	Equal(plain.scope, "all")
+	Equal(plain.explicitScope, false)
+
+	local one = ns.Search.ParseQuery("from:Thrall boss")
+	Equal(one.from, "thrall")
+	Equal(one.needle, "boss")
+
+	local two = ns.Search.ParseQuery('from:"Jaina Proud" the portal')
+	Equal(two.from, "jaina proud")
+	Equal(two.needle, "the portal")
+
+	Equal(ns.Search.ParseQuery("from:me gold").from, "me")
+
+	local here = ns.Search.ParseQuery("in:this loot")
+	Equal(here.scope, "this")
+	Equal(here.explicitScope, true)
+	Equal(here.needle, "loot")
+
+	local mixed = ns.Search.ParseQuery("the in:this boss from:\"A B\" dies")
+	Equal(mixed.needle, "the boss dies")
+	Equal(mixed.from, "a b")
+	Equal(mixed.scope, "this")
+
+	local onlyFilters = ns.Search.ParseQuery("from:bob")
+	Equal(onlyFilters.needle, "")
+	Equal(ns.Search.ParseQuery("in:nowhere").needle, "in:nowhere")
+	Equal(ns.Search.ParseQuery("xfrom:bob").from, nil, "a filter must start a word")
+
+	local empty = ns.Search.ParseQuery("boss from: loot")
+	Equal(empty.from, nil, "an empty filter is ignored")
+	Equal(empty.needle, "boss loot")
+	Equal(ns.Search.ParseQuery("from:").needle, "")
+	Equal(ns.Search.ParseQuery('from:"" boss').needle, "boss")
+
+	local open = ns.Search.ParseQuery('boss from:"Jaina Proud')
+	Equal(open.from, "jaina proud", "an unterminated quote takes the rest as the name")
+	Equal(open.needle, "boss")
+end)
+
+Test("search honours from: and the chat scope", function()
+	local ns = Boot()
+	Chat(ns, "CHAT_MSG_WHISPER", { text = "boss up", name = "Thrall Horde" })
+	Chat(ns, "CHAT_MSG_WHISPER", { text = "boss down", name = "Jaina Proud" })
+	local thrall = ns.db.conv["W:Thrall Horde"]
+	thrall.m[#thrall.m + 1] = { i = 99, t = 5, x = "my boss reply", o = 1 }
+	thrall.nextId = 99
+
+	local function Run(query, selected, scope)
+		local state = ns.Search.NewState(query, SearchList(ns), selected, scope)
+		ns.Search.Advance(state, function() return false end)
+		return state.results
+	end
+
+	Equal(#Run("boss"), 3)
+	local fromThrall = Run("from:thr boss")
+	Equal(#fromThrall, 1)
+	Equal(fromThrall[1].snippet, "boss up")
+	Equal(fromThrall[1].sender, "Thrall Horde")
+	Equal(#Run('from:"jaina proud" boss'), 1)
+	Equal(#Run("from:jaina"), 1, "a filter alone matches every message from them")
+
+	local mine = Run("from:me")
+	Equal(#mine, 1)
+	Equal(mine[1].snippet, "my boss reply")
+	Equal(mine[1].sender, "You")
+
+	Equal(#Run("boss in:this", "W:Thrall Horde"), 2)
+	Equal(#Run("boss", "W:Thrall Horde", "this"), 2, "the sidebar toggle narrows the search")
+	Equal(#Run("boss in:all", "W:Thrall Horde", "this"), 3, "an explicit in: beats the toggle")
+	Equal(#Run("boss in:this", nil), 0, "no open chat leaves nothing to search")
+end)
+
+Test("search highlights the needle with a color code", function()
+	local ns = Boot()
+	Equal(ns.Search.Highlight("The Boss and the boss", "boss", "ff0000"),
+		"The |cffff0000Boss|r and the |cffff0000boss|r")
+	Equal(ns.Search.Highlight("nothing", "boss", "ff0000"), "nothing")
+	Equal(ns.Search.Highlight("anything", "", "ff0000"), "anything")
+	Equal(ns.Search.Highlight("a |TInterface\\Icons\\x:16|t boss", "boss", "ff0000"), "a  |cffff0000boss|r",
+		"texture tags are stripped before highlighting")
+	Equal(ns.Search.Highlight("a |Atag:1:1|a b||c", "b|", "ff0000"), "a  b||c", "a needle with a pipe highlights nothing")
+	Equal(ns.Search.HexColor(1, 0.5, 0), "ff8000")
+	Equal(ns.Search.HexColor(0, 0, 2), "0000ff")
+end)
+
 Test("the sidebar shows matching chats and message results while searching", function()
 	local ns = Boot()
 	local elements = ns.Sidebar.BuildElements({
@@ -2225,13 +2315,16 @@ local function BootWithWindow()
 		Create = function() end, SetCollapsed = function() end, Refresh = function() end,
 		ClearSearchFocus = function() end,
 	}
-	ns.MessageList = { Create = function() end, Refresh = function() end }
+	ns.MessageList = { Create = function() end, Refresh = function() end, HideTooltip = function() end }
+	-- The member panel's list widgets aren't stubbed; its roster logic stays real.
+	ns.Members.Create = function() return stubs.Tolerant() end
 	ns.On("SELECTION_CHANGED", function(key)
 		calls.selected = key
 		if not key then calls.cleared = calls.cleared + 1 end
 	end)
 	ns.SettingsUI = { Create = function() end, Hide = function() end }
 	ns.EmojiPicker = { Hide = function() end }
+	ns.QuickSwitch = { Hide = function() end }
 	return ns, calls
 end
 
@@ -2557,6 +2650,37 @@ Test("a non-emoji between colons doesn't swallow the next shortcode", function()
 	Equal(ns.Emoji.Render("a:b:c:d"), "a:b:c:d")
 end)
 
+Test("the jump pill names how many messages were missed", function()
+	local ns = Boot()
+	Equal(ns.MessageList.JumpLabel(0), "Jump to latest")
+	Equal(ns.MessageList.JumpLabel(nil), "Jump to latest")
+	Equal(ns.MessageList.JumpLabel(1), "1 new message")
+	Equal(ns.MessageList.JumpLabel(12), "12 new messages")
+end)
+
+Test("marking everything read clears every chat but keeps requests as requests", function()
+	local ns = Boot()
+	Chat(ns, "CHAT_MSG_WHISPER", { text = "one", name = "A B" })
+	Chat(ns, "CHAT_MSG_WHISPER", { text = "two", name = "C D" })
+	ns.db.conv["W:C D"].req = true
+	ns.session.conv["C:trade"] = { nextId = 3, m = {}, lastT = 0 }
+	ns.session.liveUnread["C:trade"] = 2
+	ns.session.liveUnread["C:ghost"] = 1
+	local changes = 0
+	ns.On("CONV_CHANGED", function() changes = changes + 1 end)
+
+	Equal(ns.Store.MarkAllRead(), 4)
+	Equal(ns.session.liveUnread["C:ghost"], nil, "live unread without a stored chat is cleared")
+	Equal(changes, 1, "one CONV_CHANGED")
+	Equal(ns.Store.UnreadCount("W:A B", ns.db.conv["W:A B"]), 0)
+	Equal(ns.Store.UnreadCount("W:C D", ns.db.conv["W:C D"]), 0)
+	Equal(ns.Store.UnreadCount("C:trade", ns.session.conv["C:trade"]), 0)
+	Equal(ns.Store.TotalUnread(), 0)
+	Equal(ns.db.conv["W:C D"].req, true)
+	Equal(ns.Store.MarkAllRead(), 0)
+	Equal(changes, 1, "nothing to announce the second time")
+end)
+
 Test("long messages never split an escaped pipe", function()
 	local ns = Boot()
 	local parts = ns.Send.SplitMessage(string.rep("a", 254) .. "||b")
@@ -2875,6 +2999,653 @@ Test("Game Master messages are flagged in the list and the glance strip", functi
 	local lines = ns.Glance.Lines()
 	assert(lines[1].name:find("GM$"), "GM line should end with GM")
 	assert(not lines[2].name:find("GM$"), "normal line should not")
+end)
+
+Test("message elements carry the author's raw name for the player menu", function()
+	local ns = Boot()
+	local group = Conversation({
+		{ i = 1, t = 1, x = "hi", s = "Other Person" },
+		{ i = 2, t = 2, x = "mine", o = 1 },
+	})
+	local elements = ns.MessageList.BuildElements(group, 200, nil, nil, "G:Guild")
+	Equal(elements[2].name, "Other Person")
+	Equal(elements[3].name, nil)
+
+	local whisper = Conversation({
+		{ i = 1, t = 1, x = "psst" },
+		{ i = 2, t = 2, x = "reply", o = 1 },
+	}, { name = "Thrall Hellscream" })
+	elements = ns.MessageList.BuildElements(whisper, 200, nil, nil, "W:Thrall Hellscream")
+	Equal(elements[2].name, "Thrall Hellscream")
+	Equal(elements[3].name, nil)
+
+	local bnet = Conversation({ { i = 1, t = 1, x = "hey" } }, { name = "Friend#1234" })
+	Equal(ns.MessageList.BuildElements(bnet, 200, nil, nil, "B:Friend#1234")[2].name, nil)
+	Equal(ns.MessageList.BuildElements(bnet, 200, nil, nil, "B:Friend#1234")[2].raw, "hey")
+end)
+
+Test("copy text keeps link names and emoji shortcodes and drops markup", function()
+	local ns = Boot()
+	local plain = ns.CopyBox.PlainText
+	Equal(plain("|cffa335ee|Hitem:19019::::|h[Thunderfury]|h|r rocks"), "[Thunderfury] rocks")
+	Equal(plain("hi |TInterface\\Icons\\Foo:16|t there"), "hi  there")
+	Equal(plain("nice :heart: work"), "nice :heart: work")
+	Equal(plain("|cnIQ4:|Hitem:1::|h[Sword]|h|r"), "[Sword]")
+	Equal(plain("a||b"), "a|b")
+	Equal(plain("|cff00ff00x|r||y"), "x|y")
+end)
+
+Test("conversation text lists every message oldest first with its sender", function()
+	local ns = Boot()
+	local conv = Conversation({
+		{ i = 1, t = 100, x = "|Hitem:1::|h[Sword]|h?", s = "Other Person" },
+		{ i = 2, t = 200, x = "yes :joy:", o = 1 },
+	})
+	local text = ns.MessageList.ConversationText("G:Guild", conv)
+	local first, second = text:match("^(.-)\n(.-)$")
+	Equal(first, "[day0 12:00] Other Person: [Sword]?")
+	Equal(second, "[day0 12:00] You: yes :joy:")
+
+	local whisper = Conversation({ { i = 1, t = 5, x = "psst" } }, { name = "Thrall Hellscream" })
+	Equal(ns.MessageList.ConversationText("W:Thrall Hellscream", whisper), "[day0 12:00] Thrall Hellscream: psst")
+end)
+
+Test("the player menu leaves out whispering the current chat and acting on yourself", function()
+	local ns = Boot()
+	local function Labels(name)
+		local labels = {}
+		for _, item in ipairs(ns.MessageList.PlayerMenuItems(name)) do
+			labels[#labels + 1] = item.label or "-"
+		end
+		return table.concat(labels, ",")
+	end
+	ns.selectedKey = nil
+	Equal(Labels("Other Person"), "Whisper,Invite to group,Add friend,Who,Copy name,-,Block")
+	ns.selectedKey = "W:Other Person"
+	Equal(Labels("Other Person"), "Invite to group,Add friend,Who,Copy name,-,Block")
+	Equal(Labels(ns.me), "Copy name")
+end)
+
+Test("history keeps a ring, walks back and forth and restores the draft", function()
+	local ns = Boot()
+	ns.History.Clear()
+	Equal(ns.History.Older("x"), nil)
+	ns.History.Push("one")
+	ns.History.Push("two")
+	ns.History.Push("two")
+	Equal(ns.History.Count(), 2, "duplicates of the newest are skipped")
+	Equal(ns.History.Older("draft"), "two")
+	Equal(ns.History.Older("ignored"), "one")
+	Equal(ns.History.Older("ignored"), nil, "stops at the oldest")
+	Equal(ns.History.Newer(), "two")
+	Equal(ns.History.Newer(), "draft", "ends with the remembered draft")
+	Equal(ns.History.IsBrowsing(), false)
+	Equal(ns.History.Newer(), nil)
+	ns.History.Older("a")
+	ns.History.Push("three")
+	Equal(ns.History.IsBrowsing(), false, "sending resets browsing")
+	for i = 1, 60 do ns.History.Push("m" .. i) end
+	Equal(ns.History.Count(), 50)
+	Equal(ns.History.Older(""), "m60")
+end)
+
+Test("tab completion offers full names by full or first name prefix", function()
+	local ns = Boot()
+	local whisper = Conversation({ Message(1, "hi") }, { name = "Thrall Stormrage" })
+	local list = ns.Complete.Names(whisper, "thr")
+	Equal(#list, 1)
+	Equal(list[1], "Thrall Stormrage")
+	Equal(#ns.Complete.Names(whisper, "storm"), 0, "last name alone does not match")
+	Equal(#ns.Complete.Names(whisper, "Thrall S"), 1)
+
+	local group = Conversation({
+		{ i = 1, t = 1, x = "a", s = "Anna Smith" },
+		{ i = 2, t = 2, x = "b", s = "Anton Jones" },
+		{ i = 3, t = 3, x = "c", s = "Anna Smith" },
+	}, { name = "party" })
+	local names = ns.Complete.Names(group, "an")
+	Equal(#names, 2, "distinct senders")
+	Equal(names[1], "Anna Smith", "most recent first")
+	Equal(names[2], "Anton Jones")
+	Equal(#ns.Complete.Names(group, ""), 0)
+end)
+
+Test("name completion skips your own outgoing messages", function()
+	local ns = Boot()
+	local group = Conversation({
+		{ i = 1, t = 1, x = "a", s = "Anna Smith" },
+		{ i = 2, t = 2, x = "b", s = ns.me, o = 1 },
+		{ i = 3, t = 3, x = "c", s = ns.me },
+	}, { name = "party" })
+	local me = ns.Util.DisplayName(ns.me)
+	Equal(#ns.Complete.Names(group, me:sub(1, 2)), 0)
+	Equal(#ns.Complete.Names(group, "an"), 1)
+end)
+
+Test("shortcode matches list prefix matches before substring matches", function()
+	local ns = Boot()
+	local all = ns.Emoji.Search("sm")
+	local rank
+	for i, name in ipairs(all) do
+		if name:sub(1, 2) ~= "sm" then rank = rank or i else
+			if rank then
+				-- A prefix match sits behind a substring match in atlas order.
+				local matches = ns.Complete.ShortcodeMatches("sm")
+				Equal(matches[1]:sub(1, 2), "sm", "prefix first")
+				Equal(#matches <= 8, true)
+				local found = false
+				for _, m in ipairs(matches) do if m == name then found = true end end
+				Equal(found, true, name .. " survives the cut")
+				return
+			end
+		end
+	end
+	error("no prefix match behind a substring match for sm")
+end)
+
+Test("shortcode detection needs a colon, two word characters and the cursor behind them", function()
+	local ns = Boot()
+	local start, partial = ns.Complete.ShortcodeAt("hello :smi", 10)
+	Equal(start, 7)
+	Equal(partial, "smi")
+	Equal(ns.Complete.ShortcodeAt("hello :s", 8), nil, "one character is too short")
+	Equal(ns.Complete.ShortcodeAt("meet at 10:30", 13), nil, "times are not shortcodes")
+	Equal(ns.Complete.ShortcodeAt("hello :smi", 8), nil, "cursor before the end of the partial")
+	Equal(ns.Complete.ShortcodeAt(":smile: ", 8), nil, "finished shortcode")
+	Equal(ns.Complete.ShortcodeAt("\195\164 :sm", 6), 4, "cursor counts characters, not bytes")
+end)
+
+local function Entries(spec)
+	local list = {}
+	for _, item in ipairs(spec) do
+		local conv = { m = {}, lastT = 0 }
+		for k, v in pairs(item[2] or {}) do conv[k] = v end
+		list[#list + 1] = { key = item[1], conv = conv }
+	end
+	return list
+end
+
+local function Joined(keys) return table.concat(keys, ",") end
+
+Test("NextKey follows the sidebar order, wraps, and skips requests", function()
+	local ns = Boot()
+	-- Store order is by recency; the sidebar shows pinned, whispers, group, channels, requests.
+	local list = Entries({
+		{ "C:Trade" }, { "W:Amy One" }, { "P:party" }, { "W:Req Er", { req = true } },
+		{ "W:Pin Ned", { pin = true } }, { "G:Guild" },
+	})
+	-- Visual order: Pin Ned, Amy One, party, Guild, Trade.
+	Equal(ns.Keys.NextKey(list, "W:Pin Ned", 1), "W:Amy One")
+	Equal(ns.Keys.NextKey(list, "W:Amy One", 1), "P:party")
+	Equal(ns.Keys.NextKey(list, "P:party", 1), "G:Guild")
+	Equal(ns.Keys.NextKey(list, "C:Trade", 1), "W:Pin Ned", "wraps forward past the request")
+	Equal(ns.Keys.NextKey(list, "W:Pin Ned", -1), "C:Trade", "wraps backward")
+	Equal(ns.Keys.NextKey(list, "G:Guild", -1), "P:party")
+	Equal(ns.Keys.NextKey(list, "W:Req Er", 1), "W:Pin Ned", "from a request starts at the top")
+	Equal(ns.Keys.NextKey(list, nil, -1), "C:Trade", "with no chat open, backward starts at the end")
+	Equal(ns.Keys.NextKey({}, nil, 1), nil)
+end)
+
+Test("NextKey with unreadOnly only lands on unread chats", function()
+	local ns = Boot()
+	local list = Entries({
+		{ "W:Amy One" }, { "P:party", { unread = 2 } }, { "G:Guild" }, { "C:Trade", { unread = 1 } },
+	})
+	Equal(ns.Keys.NextKey(list, "W:Amy One", 1, true), "P:party")
+	Equal(ns.Keys.NextKey(list, "P:party", 1, true), "C:Trade")
+	Equal(ns.Keys.NextKey(list, "C:Trade", 1, true), "P:party", "wraps")
+	Equal(ns.Keys.NextKey(list, "W:Amy One", -1, true), "C:Trade")
+	local onlyCurrent = Entries({ { "W:Amy One" }, { "P:party", { unread = 3 } } })
+	Equal(ns.Keys.NextKey(onlyCurrent, "P:party", 1, true), nil, "nothing else is unread")
+	Equal(ns.Keys.NextKey(Entries({ { "W:A B" }, { "W:C D" } }), "W:A B", 1, true), nil)
+	local requestOnly = Entries({ { "W:Amy One" }, { "W:Req Er", { req = true, unread = 4 } } })
+	Equal(ns.Keys.NextKey(requestOnly, "W:Amy One", 1, true), nil, "unread requests are skipped")
+	local muted = Entries({ { "W:Amy One" }, { "P:party", { unread = 2, mute = true } } })
+	Equal(ns.Keys.NextKey(muted, "W:Amy One", 1, true), nil, "muted unread chats are skipped")
+	Equal(ns.Keys.NextKey(muted, "W:Amy One", 1), "P:party", "but plain stepping still visits them")
+end)
+
+Test("NextKey agrees with the rows the sidebar builds", function()
+	local ns = Boot()
+	local list = Entries({
+		{ "C:Trade" }, { "W:Amy One" }, { "B:Pal#1" }, { "O:officer" }, { "W:Pin Ned", { pin = true } },
+		{ "R:raid" }, { "W:Req Er", { req = true } },
+	})
+	local visual = {}
+	for _, group in ipairs(ns.Sidebar.Groups(list)) do
+		for _, entry in ipairs(group.entries) do visual[#visual + 1] = entry.key end
+	end
+	Equal(visual[1], "W:Pin Ned")
+	Equal(visual[#visual], "W:Req Er")
+	table.remove(visual) -- the request is never stepped to
+	local walked, key = { "W:Pin Ned" }, "W:Pin Ned"
+	for _ = 2, #visual do
+		key = ns.Keys.NextKey(list, key, 1)
+		walked[#walked + 1] = key
+	end
+	Equal(Joined(walked), Joined(visual))
+end)
+
+Test("OnComposerKey handles the shortcuts and ignores other keys", function()
+	local ns = Boot()
+	local alt, shift, ctrl = false, false, false
+	_G.IsAltKeyDown = function() return alt end
+	_G.IsShiftKeyDown = function() return shift end
+	_G.IsControlKeyDown = function() return ctrl end
+	local opened, toggled = {}, 0
+	ns.Window.Open = function(key) opened[#opened + 1] = key end
+	ns.Composer.Focus = function() end
+	ns.Window.IsFaded = function() return false end
+	ns.QuickSwitch.Toggle = function() toggled = toggled + 1 end
+	local base = Entries({
+		{ "W:Amy One", { lastT = 3 } }, { "W:Bob Two", { lastT = 2, unread = 1 } }, { "W:Cy Three", { lastT = 1 } },
+	})
+	ns.Store.List = function() return base end
+	ns.selectedKey = "W:Amy One"
+
+	Equal(ns.Keys.OnComposerKey(nil, "DOWN"), nil, "plain Down is not ours")
+	alt = true
+	Equal(ns.Keys.OnComposerKey(nil, "DOWN"), true)
+	Equal(opened[1], "W:Bob Two")
+	Equal(ns.Keys.OnComposerKey(nil, "UP"), true)
+	Equal(opened[2], "W:Cy Three")
+	shift = true
+	Equal(ns.Keys.OnComposerKey(nil, "DOWN"), true)
+	Equal(opened[3], "W:Bob Two", "Alt+Shift jumps to the unread chat")
+	alt, shift = false, false
+	Equal(ns.Keys.OnComposerKey(nil, "K"), nil)
+	ctrl = true
+	Equal(ns.Keys.OnComposerKey(nil, "K"), true)
+	Equal(toggled, 1)
+	Equal(ns.Keys.OnComposerKey(nil, "J"), nil)
+	_G.IsAltKeyDown, _G.IsShiftKeyDown, _G.IsControlKeyDown = nil, nil, nil
+end)
+
+Test("QuickSwitch.Rank puts unread first on an empty query", function()
+	local ns = Boot()
+	local list = Entries({
+		{ "W:Amy One" }, { "W:Bob Two", { unread = 2 } }, { "G:Guild" }, { "W:Cy Three", { unread = 1 } },
+		{ "W:Req Er", { req = true, unread = 5 } },
+	})
+	Equal(Joined(ns.QuickSwitch.Rank(list, "")), "W:Bob Two,W:Cy Three,W:Amy One,G:Guild")
+end)
+
+Test("QuickSwitch.Rank prefers prefixes, matches nicknames and drops requests", function()
+	local ns = Boot()
+	local list = Entries({
+		{ "W:Mara Stone" }, { "W:Tamara Vale" }, { "W:Zed Quick", { nick = "Maraud" } },
+		{ "C:Marathon" }, { "W:Mara Req", { req = true } }, { "W:Other Person" },
+	})
+	for _, entry in ipairs(list) do entry.conv.name = entry.key:sub(3) end
+	-- Prefix matches first, each group in list order.
+	Equal(Joined(ns.QuickSwitch.Rank(list, "MARA")), "W:Mara Stone,W:Zed Quick,C:Marathon,W:Tamara Vale")
+	-- The raw name still matches when a nickname hides it from the label.
+	Equal(Joined(ns.QuickSwitch.Rank(list, "quick")), "W:Zed Quick")
+	Equal(Joined(ns.QuickSwitch.Rank(list, "zzz")), "")
+end)
+
+Test("QuickSwitch offers a new whisper only for an unknown two-word name", function()
+	local ns = Boot()
+	local list = Entries({ { "W:Mara Stone" }, { "G:Guild" } })
+	for _, entry in ipairs(list) do entry.conv.name = entry.key:sub(3) end
+	Equal(ns.QuickSwitch.NewWhisperName(list, "Nova Reed"), "Nova Reed")
+	Equal(ns.QuickSwitch.NewWhisperName(list, "Nova-Reed"), "Nova Reed")
+	Equal(ns.QuickSwitch.NewWhisperName(list, "Nova"), nil, "one word is not enough")
+	Equal(ns.QuickSwitch.NewWhisperName(list, "mara stone"), nil, "the chat already exists")
+	Equal(ns.QuickSwitch.NewWhisperName(list, ""), nil)
+	local results = ns.QuickSwitch.Results(list, "Nova Reed")
+	Equal(#results, 1)
+	Equal(results[1].whisper, "Nova Reed")
+	Equal(ns.QuickSwitch.Results(list, "mara")[1].key, "W:Mara Stone")
+end)
+
+Test("quiet mode evaluates instance and raid combat rules", function()
+	local ns = Boot()
+	local both = { quietInInstance = true, quietInRaidCombat = true }
+	Equal(ns.Quiet.Evaluate(true, "party", false, false, both), "instance")
+	Equal(ns.Quiet.Evaluate(true, "arena", false, false, both), "instance")
+	Equal(ns.Quiet.Evaluate(false, "none", false, false, both), nil)
+	Equal(ns.Quiet.Evaluate(false, "none", true, false, both), nil, "combat outside a raid")
+	Equal(ns.Quiet.Evaluate(false, "none", true, true, both), "raidCombat")
+	Equal(ns.Quiet.Evaluate(false, "none", false, true, both), nil, "raid without combat")
+	Equal(ns.Quiet.Evaluate(true, "party", false, false, {}), nil, "settings off")
+end)
+
+Test("automatic quiet silences alerts like Do Not Disturb", function()
+	local ns = Boot()
+	local conv = Conversation({ Message(1) })
+	Equal(ns.Alerts.Decide("W:A B", conv, false) ~= nil, true)
+	stubs.inInstance, stubs.instanceType = true, "raid"
+	Equal(ns.Alerts.Decide("W:A B", conv, false) ~= nil, true, "setting off")
+	ns.Set("quietInInstance", true)
+	Equal(ns.Alerts.Decide("W:A B", conv, false), nil)
+	Equal(ns.Quiet.Reason(), "instance")
+	stubs.inInstance, stubs.instanceType = false, "none"
+	Equal(ns.Alerts.Decide("W:A B", conv, false) ~= nil, true, "left the instance")
+end)
+
+Test("quiet changes are announced once and shown in the status label", function()
+	local ns = Boot()
+	local seen, count = {}, 0
+	ns.On("QUIET_CHANGED", function(reason) count = count + 1; seen[count] = reason end)
+	ns.Set("quietInRaidCombat", true)
+	stubs.inRaid = true
+	local frame
+	for _, candidate in ipairs(stubs.frames) do
+		if candidate.events and candidate.events.ZONE_CHANGED_NEW_AREA then frame = candidate end
+	end
+	frame.OnEvent(frame, "PLAYER_REGEN_DISABLED")
+	frame.OnEvent(frame, "GROUP_ROSTER_UPDATE")
+	Equal(count, 1)
+	Equal(seen[1], "raidCombat")
+	Equal(ns.ProfileBar.StatusLabel("online", "raidCombat"), "Quiet \194\183 raid combat")
+	Equal(ns.ProfileBar.StatusLabel("dnd", "raidCombat"), "Do Not Disturb")
+	Equal(ns.ProfileBar.StatusLabel("afk", "instance"), "AFK")
+	frame.OnEvent(frame, "PLAYER_REGEN_ENABLED")
+	Equal(count, 2)
+	Equal(seen[2], nil)
+end)
+
+Test("the broker text shows unread count and silence state", function()
+	local ns = Boot()
+	Equal(ns.Broker.Text(0, false, false), "0")
+	Equal(ns.Broker.Text(3, true, false), "3 (DND)")
+	Equal(ns.Broker.Text(3, false, true), "3 (Quiet)")
+	Equal(ns.Broker.Text(150, false, false), "99+")
+end)
+
+Test("the broker tooltip lists up to five unread chats and skips requests", function()
+	local ns = Boot()
+	Equal(#ns.Broker.TooltipLines({}), 0)
+	local list = {}
+	for index = 1, 7 do
+		list[#list + 1] = { key = "W:P" .. index, conv = Conversation({}, { name = "P" .. index, unread = index == 2 and 0 or index }) }
+	end
+	list[1].conv.req = true
+	local lines = ns.Broker.TooltipLines(list)
+	Equal(#lines, 5)
+	Equal(lines[1].name, "P3")
+	Equal(lines[1].count, 3)
+end)
+
+Test("the broker does nothing without LibDataBroker", function()
+	local ns = Boot()
+	Equal(ns.Broker.Init(), false)
+end)
+
+Test("the broker creates a launcher object when the library exists", function()
+	local created
+	local ns = Boot()
+	_G.LibStub = { GetLibrary = function() return { NewDataObject = function(_, name, object) created = object; created.name = name; return object end } end }
+	local ok = ns.Broker.Init()
+	_G.LibStub = nil
+	Equal(ok, true)
+	Equal(created.name, "Hangout")
+	Equal(created.type, "launcher")
+end)
+
+Test("members sort online first, the leader first, then by name, and offline last", function()
+	local ns = Boot()
+	local list = ns.Members.Sort({
+		{ name = "Zed Quick", online = false },
+		{ name = "bob Stone", online = true },
+		{ name = "Alma Reed", online = true },
+		{ name = "Cora Vale", online = true, leader = true },
+		{ name = "Abel Moss", online = false, leader = true },
+	})
+	local names = {}
+	for _, member in ipairs(list) do names[#names + 1] = member.name end
+	Equal(table.concat(names, ","), "Cora Vale,Alma Reed,bob Stone,Abel Moss,Zed Quick")
+end)
+
+Test("the member count says how many are online, and the size of a guild", function()
+	local ns = Boot()
+	local list = { { online = true }, { online = false }, { online = true } }
+	Equal(ns.Members.CountText(list), "2 online")
+	Equal(ns.Members.CountText(list, true), "2 online  ·  3 members")
+	Equal(ns.Members.CountText({}), "", "nothing to count")
+	Equal(ns.Members.CountText(nil), "")
+end)
+
+Test("only guild and group chats have a roster", function()
+	local ns = Boot()
+	Equal(ns.Members.Roster("W:A B"), nil)
+	Equal(ns.Members.Roster("C:trade"), nil)
+	Equal(ns.Members.Supports("P:party"), true)
+	Equal(ns.Members.Supports("I:instance"), true)
+	Equal(ns.Members.Supports("Wx"), false)
+	Equal(ns.Members.Supports(nil), false)
+end)
+
+Test("the guild roster comes from the guild's own key and maps status and class", function()
+	local ns = Boot()
+	stubs.guildRoster = {
+		{ name = "Thrall Hellscream-Thunderstrike", online = true, status = 1, class = "SHAMAN", level = 70, rank = "Warchief", rankIndex = 0 },
+		{ name = "Jaina Proudmoore", online = false, status = 0, class = "MAGE", level = 69, rank = "Member", rankIndex = 3 },
+		{ name = "Sylvanas Windrunner", online = true, status = 2, class = "HUNTER", level = 70, rank = "Officer", rankIndex = 1 },
+	}
+	local key = ns.Identity.GuildKey("G")
+	local roster = ns.Members.Roster(key)
+	Equal(#roster, 3)
+	Equal(roster[1].name, "Thrall Hellscream")
+	Equal(roster[1].status, "afk")
+	Equal(roster[1].leader, true)
+	Equal(roster[1].class, "SHAMAN")
+	Equal(roster[1].level, 70)
+	Equal(roster[1].rank, "Warchief")
+	Equal(roster[2].online, false)
+	Equal(roster[2].status, nil)
+	Equal(roster[3].status, "dnd")
+	Equal(#ns.Members.Roster(ns.Identity.GuildKey("O")), 3, "officer chat shares the guild's roster")
+	Equal(#ns.Members.Roster("G:Other Guild-Thunderstrike"), 0, "another guild has nothing to show")
+	Equal(ns.Members.SubtitleCount(key), "2 online  ·  3 members")
+end)
+
+Test("the group roster lists the player and the party with status and leader", function()
+	local ns = Boot()
+	stubs.group = {
+		player = { name = "Me", surname = "Self", class = "SHAMAN" },
+		party1 = { name = "Dora", surname = "Fell", class = "PRIEST", leader = true, level = 62 },
+		party2 = { name = "Ned", surname = "Gray", class = "ROGUE", offline = true },
+		party3 = { name = "Ivy", surname = "Moon", class = "DRUID", afk = true },
+	}
+	local roster = ns.Members.Sort(ns.Members.Roster("P:party"))
+	Equal(#roster, 4)
+	Equal(roster[1].name, "Dora Fell")
+	Equal(roster[1].leader, true)
+	Equal(roster[1].level, 62)
+	Equal(roster[2].name, "Ivy Moon")
+	Equal(roster[2].status, "afk")
+	Equal(roster[3].name, "Me Self")
+	Equal(roster[4].name, "Ned Gray")
+	Equal(roster[4].online, false)
+	Equal(ns.Members.SubtitleCount("P:party"), "3 online")
+end)
+
+Test("the raid roster walks the raid units", function()
+	local ns = Boot()
+	stubs.inRaid = true
+	stubs.group = {
+		raid1 = { name = "Me", surname = "Self", class = "SHAMAN" },
+		raid2 = { name = "Dora", surname = "Fell", class = "PRIEST", leader = true },
+	}
+	local roster = ns.Members.Sort(ns.Members.Roster("R:raid"))
+	Equal(#roster, 2)
+	Equal(roster[1].name, "Dora Fell")
+	Equal(#ns.Members.Roster("I:instance"), 2, "an instance group is read the same way")
+end)
+
+Test("the guild roster is requested at most once every ten seconds", function()
+	local ns = Boot()
+	local requests = 0
+	C_GuildInfo.GuildRoster = function() requests = requests + 1 end
+	stubs.time = 1000
+	Equal(ns.Members.RequestGuildRoster(), true)
+	stubs.time = 1005
+	Equal(ns.Members.RequestGuildRoster(), false)
+	stubs.time = 1010
+	Equal(ns.Members.RequestGuildRoster(), true)
+	Equal(requests, 2)
+end)
+
+Test("the header line adds the online count to guild and group chats", function()
+	local ns = Boot()
+	stubs.guildRoster = {
+		{ name = "Thrall Hellscream", online = true, status = 0 },
+		{ name = "Jaina Proudmoore", online = false, status = 0 },
+	}
+	Equal(ns.Window.SubtitleFor(ns.Identity.GuildKey("G"), {}), "Group chat  ·  1 online  ·  2 members")
+	stubs.group = { player = { name = "Me", surname = "Self" }, party1 = { name = "Dora", surname = "Fell" } }
+	Equal(ns.Window.SubtitleFor("P:party", {}), "Group chat  ·  2 online")
+	Equal(ns.Window.SubtitleFor("C:trade", {}), "Channel")
+end)
+
+Test("opening a group chat with the member list on lays out the window without error", function()
+	local ns = BootWithWindow()
+	Chat(ns, "CHAT_MSG_PARTY", { text = "hi", name = "Dora Fell" })
+	ns.Set("showMembers", true)
+	ns.Window.Open("P:party")
+	Equal(ns.selectedKey, "P:party")
+	ns.Window.Select("P:party")
+	ns.Window.Toggle()
+end)
+
+Test("a quote prefix names the sender and cuts long text on a character boundary", function()
+	local ns = Boot()
+	Equal(ns.Send.QuotePrefix("Pal", "short"), "[Pal: short] ")
+	local long = ns.Send.QuotePrefix("Pal", string.rep("a", 60))
+	Equal(long, "[Pal: " .. string.rep("a", 32) .. "\226\128\166] ")
+	local umlauts = ns.Send.QuotePrefix("Pal", string.rep("\195\164", 50))
+	Equal(umlauts, "[Pal: " .. string.rep("\195\164", 32) .. "\226\128\166] ")
+	Equal(ns.Send.QuotePrefix("Pal", "|cffa335ee|Hitem:1:2|h[Sword]|h|r"), "[Pal: [Sword]] ")
+	Equal(ns.Send.QuotePrefix("Pal", "a |TInterface\\Icons\\x:16|t b |Atag:1:1|a c"), "[Pal: a b c] ", "textures and atlases are dropped")
+	Equal(ns.Send.QuotePrefix("Pal", "50|| off |"), "[Pal: 50// off /] ", "no pipe survives to be cut apart")
+	Equal(ns.Send.QuotePrefix(string.rep("n", 40), "hi"), "[" .. string.rep("n", 24) .. "\226\128\166: hi] ", "a long sender is capped")
+end)
+
+Test("a message with a quote link gets a quote element", function()
+	local ns, key, conv = BootWithPeer()
+	Chat(ns, "CHAT_MSG_WHISPER", { text = "answer", name = "Pal Friend" })
+	conv.m[2].q = 1
+	local element = ns.MessageList.BuildElements(conv, 200)[3]
+	Equal(element.quote.id, 1)
+	Equal(element.quote.text, "hi there")
+	Equal(element.quote.sender, "Pal Friend")
+	Equal(ns.MessageList.BuildElements(conv, 200)[2].quote, nil)
+
+	conv.m[2].q = 99
+	Equal(ns.MessageList.BuildElements(conv, 200)[3].quote, nil, "a vanished message shows no quote")
+end)
+
+Test("a quote payload links the reply to the quoted message", function()
+	local ns, key, conv = BootWithPeer()
+	Chat(ns, "CHAT_MSG_WHISPER", { text = "answer", name = "Pal Friend" })
+	AddonMessage(ns, "Pal Friend", "1;Q;" .. ns.Protocol.Hash("answer") .. ";" .. ns.Protocol.Hash("hi there"))
+	Equal(conv.m[2].q, 1)
+	Equal(conv.m[1].q, nil)
+end)
+
+Test("a quote payload that arrives first waits for its chat message", function()
+	local ns, key, conv = BootWithPeer()
+	AddonMessage(ns, "Pal Friend", "1;Q;" .. ns.Protocol.Hash("answer") .. ";" .. ns.Protocol.Hash("hi there"))
+	Equal(conv.m[1].q, nil)
+	Chat(ns, "CHAT_MSG_WHISPER", { text = "answer", name = "Pal Friend" })
+	Equal(conv.m[2].q, 1)
+end)
+
+Test("a waiting quote payload expires", function()
+	local ns, key, conv = BootWithPeer()
+	AddonMessage(ns, "Pal Friend", "1;Q;" .. ns.Protocol.Hash("answer") .. ";" .. ns.Protocol.Hash("hi there"))
+	stubs.time = stubs.time + 31
+	Chat(ns, "CHAT_MSG_WHISPER", { text = "answer", name = "Pal Friend" })
+	Equal(conv.m[2].q, nil)
+end)
+
+Test("a reply to a Hangout user is sent unchanged and linked on its echo", function()
+	local ns, key, conv = BootWithPeer()
+	stubs.sent = {}
+	local reply = { key = key, id = 1, sender = "Pal Friend", snippet = "hi there" }
+	Equal(ns.Send.Text(key, "my answer", reply), true)
+	Equal(stubs.sent[1].text, "my answer")
+	Equal(LastSent().text, "1;Q;" .. ns.Protocol.Hash("my answer") .. ";" .. ns.Protocol.Hash("hi there"))
+	Chat(ns, "CHAT_MSG_WHISPER_INFORM", { text = "my answer", name = "Pal Friend" })
+	Equal(conv.m[2].q, 1)
+end)
+
+Test("a reply in a chat without Hangout users carries a visible quote", function()
+	local ns = Boot()
+	stubs.sent = {}
+	Chat(ns, "CHAT_MSG_GUILD", { text = "who is up for a raid tonight", name = "Some Guildie" })
+	local key = "G:Horde Heroes-Thunderstrike"
+	local reply = { key = key, id = 1, sender = "Some Guildie", snippet = "who is up for a raid tonight" }
+	Equal(ns.Send.Text(key, "me", reply), true)
+	Equal(stubs.sent[1].text, "[Some Guildie: who is up for a raid tonight] me")
+	Chat(ns, "CHAT_MSG_GUILD", { text = stubs.sent[1].text, name = ns.me })
+	local conv = ns.db.conv[key]
+	Equal(conv.m[#conv.m].q, nil)
+end)
+
+Test("a reply to an own message quotes the real character name", function()
+	local ns = BootWithWindow()
+	ns.MessageList.SenderOf = function(message) return message.o == 1 and "You" or "Someone" end
+	stubs.sent = {}
+	Chat(ns, "CHAT_MSG_GUILD", { text = "who is up for a raid tonight", name = "Some Guildie" })
+	local key = "G:Horde Heroes-Thunderstrike"
+	local conv = ns.db.conv[key]
+	conv.m[#conv.m + 1] = { i = 50, t = 9, x = "i am", o = 1 }
+	conv.nextId = 50
+	ns.Window.Open(key)
+	ns.Composer.SetReply(key, 50)
+	local reply = ns.Composer.PendingReply(key)
+	Equal(reply.sender, "You")
+	Equal(reply.senderName, ns.Util.DisplayName(ns.me))
+	Equal(ns.Send.Text(key, "ok", reply), true)
+	Equal(stubs.sent[1].text, "[" .. ns.Util.DisplayName(ns.me) .. ": i am] ok")
+end)
+
+Test("a reply with the same text as the quoted message still links to it", function()
+	local ns, key, conv = BootWithPeer()
+	Chat(ns, "CHAT_MSG_WHISPER", { text = "hi there", name = "Pal Friend" })
+	Equal(#conv.m, 2)
+	AddonMessage(ns, "Pal Friend", "1;Q;" .. ns.Protocol.Hash("hi there") .. ";" .. ns.Protocol.Hash("hi there"))
+	Equal(conv.m[2].q, 1, "the reply must not resolve to itself")
+	Equal(conv.m[1].q, nil)
+end)
+
+Test("the reply bar announces its height so the window can make room", function()
+	local ns = BootWithWindow()
+	ns.MessageList.SenderOf = function(message) return message.o == 1 and "You" or "Someone" end
+	Chat(ns, "CHAT_MSG_GUILD", { text = "hello", name = "Some Guildie" })
+	local key = "G:Horde Heroes-Thunderstrike"
+	ns.Window.Open(key)
+	local heights = {}
+	ns.On("COMPOSER_RESIZED", function(height) heights[#heights + 1] = height end)
+	ns.Composer.SetReply(key, 1)
+	ns.Composer.SetReply(key, 1)
+	Equal(heights[1], 22)
+	Equal(#heights, 1, "only a change of visibility fires")
+	ns.Fire("COMPOSER_RESIZED", 0)
+end)
+
+Test("the guild member total comes from the game's total, not the listed rows", function()
+	local ns = Boot()
+	stubs.guildRoster = { { name = "Guild Mate", online = true } }
+	stubs.guildTotal = 340
+	Equal(ns.Members.SubtitleCount(ns.Identity.GuildKey("G")), "1 online  ·  340 members")
+	stubs.guildTotal = nil
+end)
+
+Test("the German locale translates known keys and falls back to the key itself", function()
+	local english = Load()
+	Equal(english.L["Settings"], "Settings")
+	stubs.Install()
+	stubs.locale = "deDE"
+	local ns = {}
+	for _, path in ipairs(TocFiles()) do
+		assert(loadfile(path))("Hangout", ns)
+	end
+	Equal(ns.L["Settings"], "Einstellungen")
+	Equal(ns.L["No such key anywhere"], "No such key anywhere")
 end)
 
 local failures = 0

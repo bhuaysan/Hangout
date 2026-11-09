@@ -1,4 +1,5 @@
 local _, ns = ...
+local L = ns.L
 
 local Prompt = {}
 ns.Prompt = Prompt
@@ -49,11 +50,11 @@ local function Create()
 	field:SetScript("OnEnterPressed", Finish)
 	field:SetScript("OnEscapePressed", function() frame:Hide() end)
 
-	accept, acceptLabel = ns.Widgets.FlatButton(frame, "OK", 90)
+	accept, acceptLabel = ns.Widgets.FlatButton(frame, L["OK"], 100)
 	accept:SetPoint("BOTTOMRIGHT", -16, 14)
 	accept:SetScript("OnClick", Finish)
 
-	local cancel = ns.Widgets.FlatButton(frame, "Cancel", 80)
+	local cancel = ns.Widgets.FlatButton(frame, L["Cancel"], 110)
 	cancel:SetPoint("RIGHT", accept, "LEFT", -8, 0)
 	cancel:SetScript("OnClick", function() frame:Hide() end)
 end
@@ -82,7 +83,7 @@ end
 
 -- callback receives the entered text. The button says "Save" unless given a label.
 function Prompt.AskText(text, initial, callback, acceptText)
-	Open(text, acceptText or "Save", true, initial, callback)
+	Open(text, acceptText or L["Save"], true, initial, callback)
 end
 
 function Prompt.Confirm(text, label, callback)

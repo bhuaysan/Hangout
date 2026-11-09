@@ -1,4 +1,5 @@
 local _, ns = ...
+local L = ns.L
 
 local Sidebar = {}
 ns.Sidebar = Sidebar
@@ -8,6 +9,7 @@ local COLLAPSED_HEADER_HEIGHT = 8
 local ROW_HEIGHT = 48
 local RESULT_ROW_HEIGHT = 42
 local SEARCH_HEIGHT = 44
+local SCOPE_BAR_HEIGHT = 20
 local SEARCH_FIELD_HEIGHT = 28
 local SEARCH_TEXT_LEFT = 26
 local SEARCH_ICON_SIZE = 14
@@ -29,14 +31,17 @@ local SEARCH_DELAY = 0.25
 local MIN_SEARCH_LENGTH = 2
 
 local SECTIONS = {
-	{ label = "WHISPERS", prefixes = "WBL" },
-	{ label = "GROUP", prefixes = "GOPRI" },
-	{ label = "CHANNELS", prefixes = "C" },
+	{ label = L["WHISPERS"], prefixes = "WBL" },
+	{ label = L["GROUP"], prefixes = "GOPRI" },
+	{ label = L["CHANNELS"], prefixes = "C" },
 }
 
-local scrollBox, searchHolder, searchBox, searchPlaceholder, newChatButton
+local scrollBox, scrollBar, searchHolder, searchBox, searchPlaceholder, newChatButton
+local scopeBar, scopeStatus, scopeButtons
 local collapsed = false
 local searchResults = {}
+local searchScope = "all"
+local searchFinished = true
 
 local function RowFor(entry)
 	local preview, lastTime = ns.Store.LastActivity(entry.key, entry.conv)
@@ -44,7 +49,7 @@ local function RowFor(entry)
 		kind = "row",
 		key = entry.key,
 		label = ns.Store.LabelFor(entry.key, entry.conv),
-		preview = preview or "No messages yet",
+		preview = preview or L["No messages yet"],
 		time = lastTime and ns.Util.ShortTime(lastTime, GetServerTime()) or "",
 		class = entry.conv.class,
 		muted = entry.conv.mute,
@@ -71,7 +76,7 @@ local function BuildSearchElements(list, query, results)
 			rows[#rows + 1] = RowFor(entry)
 		end
 	end
-	AddSection(elements, "CHATS", rows)
+	AddSection(elements, L["CHATS"], rows)
 
 	local resultRows = {}
 	for _, result in ipairs(results or {}) do
@@ -81,40 +86,57 @@ local function BuildSearchElements(list, query, results)
 			id = result.id,
 			label = result.label,
 			snippet = result.snippet,
+			sender = result.sender,
+			time = result.time and ns.Util.ShortTime(result.time, GetServerTime()) or "",
+			needle = result.needle,
 		}
 	end
-	AddSection(elements, "MESSAGES", resultRows)
+	AddSection(elements, L["MESSAGES"], resultRows)
 	return elements
 end
 
--- list comes from Store.List, so rows keep their most-recent-first order.
+-- The sidebar's grouping without any row data: { { label =, entries = {...} }, ... } in
+-- visual order. list comes from Store.List, so entries keep their most-recent-first order.
+-- Keyboard navigation uses this too, so "next chat" matches what the player sees.
+function Sidebar.Groups(list)
+	local pinned = { label = L["PINNED"], entries = {} }
+	local requests = { label = L["REQUESTS"], entries = {} }
+	for _, entry in ipairs(list) do
+		if entry.conv.req then
+			requests.entries[#requests.entries + 1] = entry
+		elseif entry.conv.pin then
+			pinned.entries[#pinned.entries + 1] = entry
+		end
+	end
+
+	local groups = { pinned }
+	for _, section in ipairs(SECTIONS) do
+		local group = { label = section.label, entries = {} }
+		for _, entry in ipairs(list) do
+			if not entry.conv.pin and not entry.conv.req
+				and section.prefixes:find(entry.key:sub(1, 1), 1, true) then
+				group.entries[#group.entries + 1] = entry
+			end
+		end
+		groups[#groups + 1] = group
+	end
+	groups[#groups + 1] = requests
+	return groups
+end
+
 function Sidebar.BuildElements(list, query, results)
 	if query and query ~= "" then
 		return BuildSearchElements(list, query, results)
 	end
 
 	local elements = {}
-	local pinned, requests = {}, {}
-	for _, entry in ipairs(list) do
-		if entry.conv.req then
-			requests[#requests + 1] = RowFor(entry)
-		elseif entry.conv.pin then
-			pinned[#pinned + 1] = RowFor(entry)
-		end
-	end
-	AddSection(elements, "PINNED", pinned)
-
-	for _, section in ipairs(SECTIONS) do
+	for _, group in ipairs(Sidebar.Groups(list)) do
 		local rows = {}
-		for _, entry in ipairs(list) do
-			if not entry.conv.pin and not entry.conv.req
-				and section.prefixes:find(entry.key:sub(1, 1), 1, true) then
-				rows[#rows + 1] = RowFor(entry)
-			end
+		for _, entry in ipairs(group.entries) do
+			rows[#rows + 1] = RowFor(entry)
 		end
-		AddSection(elements, section.label, rows)
+		AddSection(elements, group.label, rows)
 	end
-	AddSection(elements, "REQUESTS", requests)
 	return elements
 end
 
@@ -126,43 +148,43 @@ local function ExtentOf(_, element)
 end
 
 local function AskNickname(key, conv)
-	ns.Prompt.AskText("Nickname for " .. ns.Util.DisplayName(conv.name or key), conv.nick, function(text)
+	ns.Prompt.AskText(L["Nickname for %s"]:format(ns.Util.DisplayName(conv.name or key)), conv.nick, function(text)
 		ns.Store.SetField(key, "nick", ns.Util.Trim(text))
 	end)
 end
 
 local function AskNote(key, conv)
-	ns.Prompt.AskText("Note for " .. ns.Store.LabelFor(key, conv), conv.note, function(text)
+	ns.Prompt.AskText(L["Note for %s"]:format(ns.Store.LabelFor(key, conv)), conv.note, function(text)
 		ns.Store.SetField(key, "note", ns.Util.Trim(text))
 	end)
 end
 
 local function ConfirmBlock(key, conv)
 	local label = ns.Store.LabelFor(key, conv)
-	ns.Prompt.Confirm("Block " .. label .. "? Your chat is deleted and their messages won't appear in Hangout.",
-		"Block", function()
+	ns.Prompt.Confirm(L["Block %s? Your chat is deleted and their messages won't appear in Hangout."]:format(label),
+		L["Block"], function()
 			ns.Filter.BlockPlayer(key:sub(3))
 			ns.Store.Delete(key)
 		end)
 end
 
 local function ConfirmDelete(key, conv)
-	ns.Prompt.Confirm("Delete your chat with " .. ns.Store.LabelFor(key, conv) .. "? This can't be undone.",
-		"Delete", function() ns.Store.Delete(key) end)
+	ns.Prompt.Confirm(L["Delete your chat with %s? This can't be undone."]:format(ns.Store.LabelFor(key, conv)),
+		L["Delete"], function() ns.Store.Delete(key) end)
 end
 
 local function AddPersistentItems(root, key, conv)
-	root:CreateButton(conv.pin and "Unpin" or "Pin", function()
+	root:CreateButton(conv.pin and L["Unpin"] or L["Pin"], function()
 		ns.Store.SetField(key, "pin", not conv.pin or nil)
 	end)
-	root:CreateButton(conv.mute and "Unmute" or "Mute", function()
+	root:CreateButton(conv.mute and L["Unmute"] or L["Mute"], function()
 		ns.Store.SetField(key, "mute", not conv.mute or nil)
 	end)
 end
 
 local function AddChannelItem(root, key)
 	local saved = ns.Store.IsPersistent(key)
-	root:CreateButton(saved and "Stop saving history" or "Save history", function()
+	root:CreateButton(saved and L["Stop saving history"] or L["Save history"], function()
 		ns.Store.SetChannelSaved(key, not saved)
 	end)
 end
@@ -175,24 +197,27 @@ local function ShowRowMenu(owner, key)
 		local persistent = ns.Store.IsPersistent(key)
 
 		if conv.req then
-			root:CreateButton("Accept", function() ns.Store.AcceptRequest(key) end)
+			root:CreateButton(L["Accept"], function() ns.Store.AcceptRequest(key) end)
 		end
 		if persistent then
 			AddPersistentItems(root, key, conv)
 		end
 		if prefix == "W" or prefix == "B" then
-			root:CreateButton("Set nickname", function() AskNickname(key, conv) end)
-			root:CreateButton("Edit note", function() AskNote(key, conv) end)
+			root:CreateButton(L["Set nickname"], function() AskNickname(key, conv) end)
+			root:CreateButton(L["Edit note"], function() AskNote(key, conv) end)
 		end
 		if ns.CategoryOf(key) == "channel" then
 			AddChannelItem(root, key)
 		end
-		root:CreateButton("Mark as read", function() ns.Store.MarkRead(key) end)
+		root:CreateButton(L["Mark as read"], function() ns.Store.MarkRead(key) end)
+		root:CreateButton(L["Copy conversation"], function()
+			ns.CopyBox.Show(L["Conversation with %s"]:format(ns.Store.LabelFor(key, conv)), ns.MessageList.ConversationText(key, conv))
+		end)
 		if prefix == "W" then
-			root:CreateButton("Block", function() ConfirmBlock(key, conv) end)
+			root:CreateButton(L["Block"], function() ConfirmBlock(key, conv) end)
 		end
 		if persistent then
-			root:CreateButton("Delete chat", function() ConfirmDelete(key, conv) end)
+			root:CreateButton(L["Delete chat"], function() ConfirmDelete(key, conv) end)
 		end
 	end)
 end
@@ -243,6 +268,10 @@ local function BuildRow(frame)
 	frame.snippet = ns.Widgets.Text(frame, "HangoutFontSmall", "muted")
 	frame.snippet:SetWordWrap(false)
 
+	-- Who wrote a search result, in front of its snippet.
+	frame.sender = ns.Widgets.Text(frame, "HangoutFontSmallBold", "text")
+	frame.sender:SetWordWrap(false)
+
 	frame.badgePill = ns.Widgets.RoundedFill(frame, "accent", "ARTWORK")
 	frame.badgePill:SetHeight(BADGE_HEIGHT)
 	frame.badge = ns.Widgets.Text(frame, "HangoutFontSmallBold", "panel")
@@ -288,12 +317,15 @@ local function LayoutText(frame, element)
 	frame.text:ClearAllPoints()
 	frame.time:ClearAllPoints()
 	frame.snippet:ClearAllPoints()
+	frame.sender:ClearAllPoints()
 	frame.badgePill:ClearAllPoints()
 	frame.text:SetJustifyH("LEFT")
 	if element.kind == "result" then
+		frame.time:SetPoint("TOPRIGHT", -8, -7)
 		frame.text:SetPoint("TOPLEFT", 14, -6)
-		frame.text:SetPoint("TOPRIGHT", -8, -6)
-		frame.snippet:SetPoint("TOPLEFT", 14, -23)
+		frame.text:SetPoint("TOPRIGHT", frame.time, "TOPLEFT", -6, 1)
+		frame.sender:SetPoint("TOPLEFT", 14, -23)
+		frame.snippet:SetPoint("TOPLEFT", frame.sender, "TOPRIGHT", 4, 0)
 		frame.snippet:SetPoint("TOPRIGHT", -8, -23)
 	elseif element.kind == "header" then
 		frame.text:SetPoint("LEFT", HEADER_LEFT, 0)
@@ -335,10 +367,14 @@ local function InitRow(frame, element)
 	end
 
 	local showsPreview = isRow and not collapsed
-	frame.time:SetShown(showsPreview)
+	frame.time:SetShown(showsPreview or isResult)
+	frame.sender:SetShown(isResult)
 	frame.snippet:SetShown(isResult or showsPreview)
 	if isResult then
-		frame.snippet:SetText(element.snippet)
+		frame.sender:SetText(element.sender or "")
+		frame.time:SetText(element.time or "")
+		frame.snippet:SetText(ns.Search.Highlight(element.snippet, element.needle or "",
+			ns.Search.HexColor(ns.Theme.Color("accent"))))
 		frame.snippet:SetTextColor(ns.Theme.Color("muted"))
 	elseif showsPreview then
 		frame.time:SetText(element.time)
@@ -366,18 +402,50 @@ function Sidebar.Refresh()
 	scrollBox:SetDataProvider(CreateDataProvider(elements), ScrollBoxConstants.RetainScrollPosition)
 end
 
+local function ResultsText(count)
+	if not searchFinished then return L["Searching..."] end
+	if count == 0 then return L["No results"] end
+	return count == 1 and L["1 result"] or L["%d results"]:format(count)
+end
+
+-- The scope toggles and the status line only exist while there is a query.
+local function UpdateScopeBar()
+	if not scopeBar then return end
+	local query = CurrentQuery()
+	local shown = not collapsed and query ~= ""
+	scopeBar:SetShown(shown)
+	local top = shown and SEARCH_HEIGHT + SCOPE_BAR_HEIGHT or collapsed and 0 or SEARCH_HEIGHT
+	scrollBox:SetPoint("TOPLEFT", 0, -top)
+	scrollBar:SetPoint("TOPRIGHT", -2, -top)
+	for scope, button in pairs(scopeButtons) do
+		local active = scope == searchScope
+		button.label:SetTextColor(ns.Theme.Color(active and "accent" or "muted"))
+		button.active = active
+	end
+	if #query < MIN_SEARCH_LENGTH then
+		scopeStatus:SetText("")
+	else
+		scopeStatus:SetText(ResultsText(#searchResults))
+	end
+end
+
 local function RunSearch()
 	local query = CurrentQuery()
 	searchResults = {}
 	if #query < MIN_SEARCH_LENGTH then
 		ns.Search.Cancel()
+		searchFinished = true
+		UpdateScopeBar()
 		Sidebar.Refresh()
 		return
 	end
-	ns.Search.Run(query, function(results)
+	searchFinished = false
+	ns.Search.Run(query, function(results, finished)
 		searchResults = results
+		searchFinished = finished
+		UpdateScopeBar()
 		Sidebar.Refresh()
-	end)
+	end, searchScope)
 end
 
 local runSearchSoon = ns.Util.Debounced(SEARCH_DELAY, RunSearch)
@@ -399,10 +467,13 @@ local function CreateSearchBox(parent)
 
 	searchPlaceholder = ns.Widgets.Text(searchHolder, "HangoutFontSmall", "muted")
 	searchPlaceholder:SetPoint("LEFT", SEARCH_TEXT_LEFT, 0)
-	searchPlaceholder:SetText("Search")
+	searchPlaceholder:SetText(L["Search"])
 
 	searchBox:SetScript("OnTextChanged", function()
 		UpdateSearchPlaceholder()
+		-- Until the debounced search starts, the old count would be misleading.
+		searchFinished = #CurrentQuery() < MIN_SEARCH_LENGTH
+		UpdateScopeBar()
 		Sidebar.Refresh()
 		runSearchSoon()
 	end)
@@ -415,30 +486,73 @@ local function CreateSearchBox(parent)
 	end)
 end
 
+local SCOPES = {
+	{ scope = "all", text = L["All chats"], width = 72 },
+	{ scope = "this", text = L["This chat"], width = 72 },
+}
+
+-- Two text toggles under the search field choose where the search looks.
+local function CreateScopeBar(parent)
+	scopeBar = CreateFrame("Frame", nil, parent)
+	scopeBar:SetHeight(SCOPE_BAR_HEIGHT)
+	scopeBar:SetPoint("TOPLEFT", 8, -SEARCH_HEIGHT)
+	scopeBar:SetPoint("TOPRIGHT", -8, -SEARCH_HEIGHT)
+	scopeBar:Hide()
+	scopeButtons = {}
+
+	local previous
+	for _, choice in ipairs(SCOPES) do
+		local button, label = ns.Widgets.TextButton(scopeBar, choice.text, "HangoutFontSmall")
+		button.label = label
+		button:SetSize(choice.width, SCOPE_BAR_HEIGHT)
+		if previous then
+			button:SetPoint("LEFT", previous, "RIGHT", 4, 0)
+		else
+			button:SetPoint("LEFT", 6, 0)
+		end
+		-- The active toggle keeps its accent color when the mouse leaves.
+		button:SetScript("OnLeave", function()
+			label:SetTextColor(ns.Theme.Color(button.active and "accent" or "muted"))
+		end)
+		button:SetScript("OnClick", function()
+			if searchScope == choice.scope then return end
+			searchScope = choice.scope
+			UpdateScopeBar()
+			RunSearch()
+		end)
+		scopeButtons[choice.scope] = button
+		previous = button
+	end
+
+	scopeStatus = ns.Widgets.Text(scopeBar, "HangoutFontSmall", "muted")
+	scopeStatus:SetPoint("RIGHT", -6, 0)
+	scopeStatus:SetJustifyH("RIGHT")
+end
+
 local function StartWhisper(text)
 	local key = ns.Store.StartWhisper(text)
 	if key then ns.Window.Reply(key) end
 end
 
 local function CreateNewChatButton(parent)
-	newChatButton = ns.Widgets.IconButton(parent, "plus", NEW_CHAT_SIZE, 15, "New whisper")
+	newChatButton = ns.Widgets.IconButton(parent, "plus", NEW_CHAT_SIZE, 15, L["New whisper"])
 	newChatButton:SetPoint("TOPRIGHT", -8, -8)
 	ns.Widgets.RoundedFill(newChatButton, "selected"):SetAllPoints()
 	newChatButton:SetScript("OnClick", function()
-		ns.Prompt.AskText("Who do you want to whisper? Enter their full name.", "", StartWhisper, "Start")
+		ns.Prompt.AskText(L["Who do you want to whisper? Enter their full name."], "", StartWhisper, L["Start"])
 	end)
 end
 
 function Sidebar.Create(parent)
 	CreateSearchBox(parent)
 	CreateNewChatButton(parent)
+	CreateScopeBar(parent)
 	ns.ProfileBar.Create(parent)
 
 	local view = CreateScrollBoxListLinearView(4, 8, 0, 0, 0)
 	view:SetElementInitializer("Button", InitRow)
 	view:SetElementExtentCalculator(ExtentOf)
 
-	local scrollBar
 	scrollBox, scrollBar = ns.Widgets.ScrollList(parent, view)
 	scrollBar:SetPoint("TOPRIGHT", -2, -SEARCH_HEIGHT)
 	scrollBar:SetPoint("BOTTOMRIGHT", -2, ns.ProfileBar.HEIGHT + 4)
@@ -451,8 +565,8 @@ function Sidebar.SetCollapsed(isCollapsed)
 	searchHolder:SetShown(not collapsed)
 	newChatButton:SetShown(not collapsed)
 	if collapsed then searchBox:SetText("") end
-	scrollBox:SetPoint("TOPLEFT", 0, collapsed and 0 or -SEARCH_HEIGHT)
 	scrollBox:SetPoint("BOTTOMRIGHT", collapsed and 0 or -LIST_RIGHT_GAP, ns.ProfileBar.HEIGHT)
+	UpdateScopeBar()
 	ns.ProfileBar.SetCollapsed(collapsed)
 	Sidebar.Refresh()
 end

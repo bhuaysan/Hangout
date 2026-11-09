@@ -1,12 +1,14 @@
 ## Interface: 16001
 ## Title: Hangout
 ## Notes: A modern, simple overview of your whispers and chat channels.
-## Version: 1.2.3
+## Version: 1.3.0
 ## SavedVariables: HangoutDB
 ## IconTexture: Interface\AddOns\Hangout\Media\icon.png
 ## AddonCompartmentFunc: Hangout_OnCompartmentClick
 
 Core\Init.lua
+Locales\Locales.lua
+Locales\deDE.lua
 Core\Util.lua
 Core\Defaults.lua
 Core\DB.lua
@@ -15,20 +17,29 @@ Core\Identity.lua
 Core\Lockdown.lua
 Core\Capture.lua
 Core\Send.lua
+Features\Quiet.lua
 Features\Alerts.lua
+Features\Broker.lua
 Features\EmojiData.lua
 Features\Emoji.lua
 Features\Filter.lua
 Features\Search.lua
+Features\History.lua
+Features\Complete.lua
 Features\Protocol.lua
 UI\Theme.lua
 UI\Widgets.lua
 UI\Prompt.lua
+UI\PlayerMenu.lua
+UI\CopyBox.lua
 UI\MessageList.lua
 UI\Sidebar.lua
+UI\Members.lua
 UI\ProfileBar.lua
 UI\EmojiPicker.lua
 UI\Composer.lua
+UI\QuickSwitch.lua
+UI\Keys.lua
 UI\Toast.lua
 UI\Glance.lua
 UI\Settings.lua

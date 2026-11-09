@@ -63,9 +63,28 @@ function stubs.Install()
 
 	_G.canaccessvalue = function(value) return not IsSecret(value) end
 	_G.issecretvalue = IsSecret
+	stubs.locale = "enUS"
+	_G.GetLocale = function() return stubs.locale end
 	_G.GetServerTime = function() return stubs.serverTime end
 	_G.GetNormalizedRealmName = function() return "Thunderstrike" end
-	_G.UnitName = function() return "Me", "Self" end
+	-- stubs.group maps unit tokens to { name, surname, class, offline, afk, dnd, leader, level }.
+	stubs.group = {}
+	stubs.inRaid = false
+	_G.UnitName = function(unit)
+		local member = stubs.group[unit]
+		if member then return member.name, member.surname end
+		return "Me", "Self"
+	end
+	_G.UnitExists = function(unit) return stubs.group[unit] ~= nil end
+	_G.UnitIsConnected = function(unit) return not stubs.group[unit].offline end
+	_G.UnitIsGroupLeader = function(unit) return stubs.group[unit].leader == true end
+	_G.UnitLevel = function(unit) return stubs.group[unit].level or 60 end
+	_G.IsInRaid = function() return stubs.inRaid end
+	_G.GetNumGroupMembers = function()
+		local count = 0
+		for _ in pairs(stubs.group) do count = count + 1 end
+		return count
+	end
 	_G.NameUtil = {
 		GetFullNameWithoutRealm = function(first, surname)
 			return surname and (first .. " " .. surname) or first
@@ -75,10 +94,19 @@ function stubs.Install()
 	_G.WOW_PROJECT_ID = 1
 	_G.Enum = { SendAddonMessageResult = { Success = 0 }, UITextureSliceMode = { Stretched = 0 } }
 	_G.UnitInParty = function() return not stubs.allStrangers end
+	stubs.inInstance = false
+	stubs.instanceType = "none"
+	stubs.inRaid = false
+	_G.IsInInstance = function() return stubs.inInstance, stubs.instanceType end
+	_G.IsInRaid = function() return stubs.inRaid end
 	_G.UnitInRaid = function() return false end
 	_G.IsGuildMember = function() return false end
 	_G.debugprofilestop = function() return stubs.profileMs end
-	_G.UnitClass = function() return "Shaman", "SHAMAN" end
+	_G.UnitClass = function(unit)
+		local member = stubs.group[unit]
+		if member then return member.class, member.class end
+		return "Shaman", "SHAMAN"
+	end
 	_G.InCombatLockdown = function() return stubs.inCombat end
 	_G.GetTime = function() return stubs.time end
 	_G.PlaySound = function(kit) stubs.played[#stubs.played + 1] = kit end
@@ -95,6 +123,7 @@ function stubs.Install()
 	end
 	_G.Settings = Tolerant()
 	_G.ScrollBoxConstants = {}
+	_G.BaseScrollBoxEvents = { OnScroll = "OnScroll" }
 	stubs.chatFilters = {}
 	stubs.lastTell = nil
 	_G.ChatFrameUtil = {
@@ -105,14 +134,18 @@ function stubs.Install()
 	_G.C_FriendList = {
 		ShowFriends = function() end,
 		IsFriend = function() return false end,
+		AddFriend = function(name) stubs.friendAdded = name end,
+		SendWho = function(filter) stubs.whoSent = filter end,
 		GetNumFriends = function() return #stubs.friends end,
 		GetFriendInfoByIndex = function(index) return stubs.friends[index] end,
 	}
 	_G.C_GuildInfo = { GuildRoster = function() end }
-	_G.GetNumGuildMembers = function() return #stubs.guildRoster end
+	_G.GetNumGuildMembers = function() return stubs.guildTotal or #stubs.guildRoster end
 	_G.GetGuildRosterInfo = function(index)
 		local member = stubs.guildRoster[index]
-		return member.name, nil, nil, nil, nil, nil, nil, nil, member.online, member.status
+		if not member then return nil end
+		return member.name, member.rank, member.rankIndex, member.level, nil, nil, nil, nil,
+			member.online, member.status, member.class
 	end
 	_G.GetGuildInfo = function() return stubs.guildName end
 	_G.GetChannelName = function(index)
@@ -141,6 +174,9 @@ function stubs.Install()
 	_G.date = function(format, time)
 		if format == "%Y-%m-%d" then
 			return "day" .. math.floor((time or 0) / SECONDS_PER_DAY)
+		end
+		if format == "%Y-%m-%d %H:%M" then
+			return "day" .. math.floor((time or 0) / SECONDS_PER_DAY) .. " 12:00"
 		end
 		if format == "%B " then return "November " end
 		if format == "%b " then return "Nov " end
@@ -191,8 +227,16 @@ function stubs.Install()
 	_G.CLASS_ICON_TCOORDS = { SHAMAN = { 0.25, 0.5, 0.25, 0.5 } }
 	stubs.afk = false
 	stubs.dnd = false
-	_G.UnitIsAFK = function() return stubs.afk end
-	_G.UnitIsDND = function() return stubs.dnd end
+	_G.UnitIsAFK = function(unit)
+		local member = stubs.group[unit]
+		if member then return member.afk == true end
+		return stubs.afk
+	end
+	_G.UnitIsDND = function(unit)
+		local member = stubs.group[unit]
+		if member then return member.dnd == true end
+		return stubs.dnd
+	end
 	_G.LOCALIZED_CLASS_NAMES_MALE = { SHAMAN = "Schamane" }
 	_G.SlashCmdList = {}
 	_G.HangoutDB = nil

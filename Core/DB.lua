@@ -1,4 +1,5 @@
 local _, ns = ...
+local L = ns.L
 
 local DB = {}
 ns.DB = DB
@@ -38,14 +39,14 @@ function DB.Init()
 		HangoutDB = NewDatabase()
 	elseif type(HangoutDB) ~= "table" or type(HangoutDB.schema) ~= "number" then
 		HangoutDB = NewDatabase()
-		ns.Print("Your saved history couldn't be read and was reset.")
+		ns.Print(L["Your saved history couldn't be read and was reset."])
 	end
 
 	if HangoutDB.schema > DB.SCHEMA then
 		-- Saved by a newer Hangout. Leave it untouched and run from memory.
 		ns.readOnly = true
 		ns.db = NewDatabase()
-		ns.Print("Your saved history is from a newer version. It won't be changed, and this session won't be saved.")
+		ns.Print(L["Your saved history is from a newer version. It won't be changed, and this session won't be saved."])
 		return
 	end
 

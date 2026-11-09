@@ -1,4 +1,5 @@
 local _, ns = ...
+local L = ns.L
 
 local Util = {}
 ns.Util = Util
@@ -27,13 +28,29 @@ function Util.ShortTime(timestamp, now)
 		return date("%H:%M", timestamp)
 	end
 	if date("%Y-%m-%d", timestamp) == date("%Y-%m-%d", now - 86400) then
-		return "Yesterday"
+		return L["Yesterday"]
 	end
 	return date("%b ", timestamp) .. tonumber(date("%d", timestamp))
 end
 
 function Util.Trim(text)
 	return (text:match("^%s*(.-)%s*$"))
+end
+
+-- Cuts text to at most maxChars characters (not bytes, so UTF-8 stays intact),
+-- collapsing line breaks so a quote always fits on one line.
+function Util.Truncate(text, maxChars)
+	text = text:gsub("%s+", " ")
+	local count, position, length = 0, 1, #text
+	while position <= length do
+		if count == maxChars then
+			return text:sub(1, position - 1) .. "\226\128\166"
+		end
+		local byte = text:byte(position)
+		position = position + (byte >= 240 and 4 or byte >= 224 and 3 or byte >= 192 and 2 or 1)
+		count = count + 1
+	end
+	return text
 end
 
 -- Splits comma-separated text into a list of trimmed, lowercase entries.

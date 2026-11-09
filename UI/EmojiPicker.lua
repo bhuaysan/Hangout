@@ -1,4 +1,5 @@
 local _, ns = ...
+local L = ns.L
 
 local EmojiPicker = {}
 ns.EmojiPicker = EmojiPicker
@@ -71,7 +72,7 @@ local function CreateSearch()
 
 	searchPlaceholder = ns.Widgets.Text(holder, "HangoutFontSmall", "muted")
 	searchPlaceholder:SetPoint("LEFT", 6, 0)
-	searchPlaceholder:SetText("Search emoji")
+	searchPlaceholder:SetText(L["Search emoji"])
 
 	local function updatePlaceholder()
 		searchPlaceholder:SetShown(searchBox:GetText() == "" and not searchBox:HasFocus())
@@ -151,7 +152,7 @@ local function Create(anchor)
 
 	emptyText = ns.Widgets.Text(panel, "HangoutFont", "muted")
 	emptyText:SetPoint("CENTER", 0, gridTop / 2)
-	emptyText:SetText("No emoji match that search.")
+	emptyText:SetText(L["No emoji match that search."])
 
 	-- A hidden search box must never keep hold of the keyboard.
 	panel:SetScript("OnHide", function()

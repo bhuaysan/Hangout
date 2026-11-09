@@ -1,4 +1,5 @@
 local _, ns = ...
+local L = ns.L
 
 local Store = {}
 ns.Store = Store
@@ -44,6 +45,14 @@ end
 
 function Store.Get(key)
 	return TableFor(key)[key]
+end
+
+-- Newest messages are the likeliest targets, so search from the end.
+function Store.FindMessage(conv, id)
+	for position = #conv.m, 1, -1 do
+		if conv.m[position].i == id then return conv.m[position] end
+	end
+	return nil
 end
 
 local function DropOldest(list, count)
@@ -152,7 +161,7 @@ function Store.LastActivity(key, conv)
 	local messages = conv.m
 	local last = messages and messages[#messages]
 	if newestLocked and (not last or newestLocked.t >= last.t) then
-		return "Restricted message", newestLocked.t
+		return L["Restricted message"], newestLocked.t
 	end
 	if not last then return nil end
 
@@ -238,15 +247,44 @@ function Store.TotalUnread()
 	return total
 end
 
-function Store.MarkRead(key)
+-- Returns whether anything was unread, so callers can decide what to announce.
+local function ClearUnread(key)
 	local conv = Store.Get(key)
-	if not conv then return end
-	if (conv.unread or 0) == 0 and not ns.session.liveUnread[key] then return end
+	if not conv then
+		-- A chat can have live unread messages before any record of it is stored.
+		if not ns.session.liveUnread[key] then return false end
+		ns.session.liveUnread[key] = nil
+		return true
+	end
+	if (conv.unread or 0) == 0 and not ns.session.liveUnread[key] then return false end
 	conv.unread = nil
 	conv.readId = conv.nextId
 	ns.session.liveUnread[key] = nil
+	return true
+end
+
+function Store.MarkRead(key)
+	if not ClearUnread(key) then return end
 	ns.Fire("CONV_CHANGED")
 	ns.Fire("CONV_READ", key)
+end
+
+-- Reads every chat, requests and muted ones included. Requests stay requests:
+-- reading them is not the same as accepting them. Returns how many chats changed.
+function Store.MarkAllRead()
+	local changed = {}
+	for _, entry in ipairs(Store.List()) do
+		if ClearUnread(entry.key) then changed[#changed + 1] = entry.key end
+	end
+	-- Live unread counts can belong to a chat that has no stored record yet.
+	for key in pairs(ns.session.liveUnread) do
+		if ClearUnread(key) then changed[#changed + 1] = key end
+	end
+	if #changed > 0 then
+		ns.Fire("CONV_CHANGED")
+		for _, key in ipairs(changed) do ns.Fire("CONV_READ", key) end
+	end
+	return #changed
 end
 
 function Store.AcceptRequest(key)

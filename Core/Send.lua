@@ -7,6 +7,8 @@ local MAX_BYTES = 255
 local MAX_PARTS = 4
 local SPACE = 32
 local PIPE = 124
+local QUOTE_PREFIX_CHARS = 32
+local QUOTE_SENDER_CHARS = 24
 
 local CHAT_TYPE_BY_PREFIX = {
 	G = "GUILD",
@@ -124,14 +126,32 @@ local function SenderFor(key)
 	return function(part) C_ChatInfo.SendChatMessage(part, chatType) end
 end
 
+-- A visible quote for chats whose members may not run Hangout.
+function Send.QuotePrefix(sender, text)
+	-- Textures and atlases carry pipes, and a cut inside any escape would make
+	-- the server reject the whole message, so no pipe may survive.
+	local visible = ns.Search.VisibleText(text):gsub("|T.-|t", ""):gsub("|A.-|a", ""):gsub("|", "/")
+	return "[" .. ns.Util.Truncate(sender, QUOTE_SENDER_CHARS) .. ": " .. ns.Util.Truncate(visible, QUOTE_PREFIX_CHARS) .. "] "
+end
+
 -- Must be called from a key press: channel messages require one.
 -- Returns true, or false and a reason. Sent messages are recorded when the
 -- server echoes them back, so they only appear once they were really sent.
-function Send.Text(key, text)
+-- reply, if given, is { key, id, sender, senderName, snippet }; senderName is
+-- the real character name, as sender may read "You": Hangout users get a
+-- structured link to the quoted message, everyone else a visible quote.
+function Send.Text(key, text, reply)
 	text = ns.Util.Trim(text)
 	if text == "" then return false, "empty" end
 	if text:sub(1, 1) == "/" then return false, "slash" end
 	if ns.Lockdown.IsActive() then return false, "restricted" end
+
+	local conv = reply and reply.key == key and ns.Store.Get(key)
+	local quoted = conv and ns.Store.FindMessage(conv, reply.id)
+	local asLink = quoted and ns.Protocol.CanReact(key)
+	if quoted and not asLink then
+		text = Send.QuotePrefix(reply.senderName or reply.sender, quoted.x) .. text
+	end
 
 	local parts = Send.SplitMessage(text)
 	if not parts then return false, "tooLong" end
@@ -139,8 +159,11 @@ function Send.Text(key, text)
 	local deliver = SenderFor(key)
 	if not deliver then return false, "unavailable" end
 
+	-- The echo of the first part is what the link attaches to.
+	local transmitLink = asLink and ns.Protocol.PendingReply(key, parts[1], quoted)
 	for i = 1, #parts do
 		deliver(parts[i])
 	end
+	if transmitLink then transmitLink() end
 	return true
 end

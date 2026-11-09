@@ -1,4 +1,5 @@
 local _, ns = ...
+local L = ns.L
 
 local Window = {}
 ns.Window = Window
@@ -22,7 +23,11 @@ local EDGE_LEVEL_OFFSET = 35
 local GRIP_LEVEL_OFFSET = 40
 
 local frame, title, subtitle, header, banner, messages, sidebar, emptyHint
-local collapseButton, closeButton, settingsButton, muteButton, pinButton, avatar
+local collapseButton, closeButton, settingsButton, muteButton, pinButton, membersButton, avatar
+local composer, membersPanel
+local membersOpen = false
+-- How far the composer's reply bar reaches into the body.
+local replyBarHeight = 0
 local settingsOpen = false
 local faded = false
 local hiddenForCombat = false
@@ -133,7 +138,7 @@ local function CreateHeader()
 	header:SetHeight(HEADER_HEIGHT)
 	ns.Widgets.RoundedFill(header, "raised", nil, "topRight"):SetAllPoints()
 
-	collapseButton = HeaderButton("collapse", "Show or hide the sidebar")
+	collapseButton = HeaderButton("collapse", L["Show or hide the sidebar"])
 	collapseButton:SetPoint("LEFT", 8, 0)
 	collapseButton:SetScript("OnClick", function()
 		SetCollapsed(not ns.Get("sidebarCollapsed"))
@@ -148,21 +153,29 @@ local function CreateHeader()
 	subtitle = ns.Widgets.Text(header, "HangoutFontSmall", "muted")
 	subtitle:SetWordWrap(false)
 
-	closeButton = HeaderButton("close", "Close")
+	closeButton = HeaderButton("close", L["Close"])
 	closeButton:SetPoint("RIGHT", -8, 0)
 	closeButton:SetScript("OnClick", function() frame:Hide() end)
 
-	settingsButton = HeaderButton("gear", "Settings")
+	settingsButton = HeaderButton("gear", L["Settings"])
 	settingsButton:SetPoint("RIGHT", closeButton, "LEFT", -2, 0)
 	settingsButton:SetScript("OnClick", function() ns.SettingsUI.Toggle() end)
 
-	muteButton = HeaderButton("mute", "Mute this chat")
+	muteButton = HeaderButton("mute", L["Mute this chat"])
 	muteButton:SetPoint("RIGHT", closeButton, "LEFT", -2, 0)
 	muteButton:SetScript("OnClick", function() ToggleField("mute") end)
 
-	pinButton = HeaderButton("pin", "Pin this chat")
+	pinButton = HeaderButton("pin", L["Pin this chat"])
 	pinButton:SetPoint("RIGHT", muteButton, "LEFT", -2, 0)
 	pinButton:SetScript("OnClick", function() ToggleField("pin") end)
+
+	-- The guild icon doubles as the members icon. UpdateTitle places it next to the pin.
+	membersButton = HeaderButton("guild", L["Show or hide the member list"])
+	membersButton:SetPoint("RIGHT", pinButton, "LEFT", -2, 0)
+	membersButton:SetScript("OnClick", function()
+		ns.Set("showMembers", not ns.Get("showMembers"))
+		Window.UpdateMembers()
+	end)
 end
 
 local function CreateBanner()
@@ -175,7 +188,19 @@ local function CreateBanner()
 	bannerText:SetPoint("LEFT", 12, 0)
 	bannerText:SetPoint("RIGHT", -12, 0)
 	bannerText:SetWordWrap(false)
-	bannerText:SetText("Chat is restricted right now. Hangout can't send, and will catch up when it ends.")
+	bannerText:SetText(L["Chat is restricted right now. Hangout can't send, and will catch up when it ends."])
+end
+
+-- The messages end where the member panel begins, and the panel sits under the
+-- restriction banner just as the messages do. The composer stays full width.
+local function LayoutBody()
+	local top = ns.Lockdown.IsActive() and -(BANNER_HEIGHT + 1) or -1
+	-- The reply bar sits on the composer's top edge, so both columns end above it.
+	local bottom = 1 + replyBarHeight
+	messages:SetPoint("TOPLEFT", header, "BOTTOMLEFT", 0, top)
+	messages:SetPoint("BOTTOMRIGHT", composer, "TOPRIGHT", membersOpen and -ns.Members.PANEL_WIDTH or 0, bottom)
+	membersPanel:SetPoint("TOPRIGHT", header, "BOTTOMRIGHT", 0, top)
+	membersPanel:SetPoint("BOTTOMRIGHT", composer, "TOPRIGHT", 0, bottom)
 end
 
 local function Create()
@@ -201,9 +226,13 @@ local function Create()
 		-- Hidden but still "shown" means the whole UI went away, as with Alt-Z.
 		hiddenWithUI = frame:IsShown()
 		UpdateActive()
+		ns.MessageList.HideTooltip()
+		ns.Fire("WINDOW_HIDDEN")
 	end)
 	frame:SetScript("OnShow", function()
 		ns.Glance.Hide()
+		-- Guild data goes stale while the window is closed.
+		if ns.Members.IsGuild(ns.selectedKey) then ns.Members.RequestGuildRoster() end
 		if hiddenWithUI then
 			hiddenWithUI = false
 			ns.Sidebar.Refresh()
@@ -227,7 +256,7 @@ local function Create()
 	headerLine:SetPoint("TOPLEFT", header, "BOTTOMLEFT")
 	headerLine:SetPoint("TOPRIGHT", header, "BOTTOMRIGHT")
 
-	local composer = CreateFrame("Frame", nil, frame)
+	composer = CreateFrame("Frame", nil, frame)
 	composer:SetPoint("BOTTOMLEFT", sidebar, "BOTTOMRIGHT")
 	composer:SetPoint("BOTTOMRIGHT")
 	composer:SetHeight(COMPOSER_HEIGHT)
@@ -236,15 +265,15 @@ local function Create()
 	CreateBanner()
 
 	messages = CreateFrame("Frame", nil, frame)
-	messages:SetPoint("TOPLEFT", header, "BOTTOMLEFT", 0, -1)
-	messages:SetPoint("BOTTOMRIGHT", composer, "TOPRIGHT", 0, 1)
 	ns.MessageList.Create(messages)
+	membersPanel = ns.Members.Create(frame)
+	LayoutBody()
 
 	emptyHint = ns.Widgets.Text(messages, "HangoutFont", "muted")
 	emptyHint:SetPoint("LEFT", 24, 0)
 	emptyHint:SetPoint("RIGHT", -24, 0)
 	emptyHint:SetJustifyH("CENTER")
-	emptyHint:SetText("Use the + next to Search to whisper someone. Chats also appear here when someone messages you.")
+	emptyHint:SetText(L["Use the + next to Search to whisper someone. Chats also appear here when someone messages you."])
 	emptyHint:Hide()
 
 	ns.SettingsUI.Create(frame, header)
@@ -256,24 +285,27 @@ local function UpdateRestriction()
 	if not frame then return end
 	local active = ns.Lockdown.IsActive()
 	banner:SetShown(active)
-	messages:SetPoint("TOPLEFT", header, "BOTTOMLEFT", 0, active and -(BANNER_HEIGHT + 1) or -1)
+	LayoutBody()
 	refreshAfterResize()
 end
 
 local STATUS_LABEL = {
-	online = "Online",
-	afk = "AFK",
-	dnd = "Do Not Disturb",
-	offline = "Offline",
+	online = L["Online"],
+	afk = L["AFK"],
+	dnd = L["Do Not Disturb"],
+	offline = L["Offline"],
 }
 
 -- The small line under a chat's name.
 function Window.SubtitleFor(key, conv)
-	if ns.Protocol.IsTyping(key) then return "typing..." end
+	if ns.Protocol.IsTyping(key) then return L["typing..."] end
 
 	local category = ns.CategoryOf(key)
-	if category == "group" then return "Group chat" end
-	if category == "channel" then return "Channel" end
+	if category == "group" then
+		local count = ns.Members.SubtitleCount(key)
+		return count ~= "" and L["Group chat  ·  %s"]:format(count) or L["Group chat"]
+	end
+	if category == "channel" then return L["Channel"] end
 
 	local parts = {}
 	local status = ns.Identity.Status(key)
@@ -286,16 +318,18 @@ end
 
 local function AnchorTitle(hasAvatar, hasSubtitle)
 	local left = hasAvatar and TITLE_LEFT_WITH_AVATAR or TITLE_LEFT_PLAIN
+	-- The members button takes one more slot from the title.
+	local reserve = TITLE_RIGHT_RESERVE + (membersButton:IsShown() and HEADER_BUTTON_SIZE + 2 or 0)
 	title:ClearAllPoints()
 	subtitle:ClearAllPoints()
 	if hasSubtitle then
 		title:SetPoint("TOPLEFT", left, -10)
-		title:SetPoint("TOPRIGHT", -TITLE_RIGHT_RESERVE, -10)
+		title:SetPoint("TOPRIGHT", -reserve, -10)
 		subtitle:SetPoint("TOPLEFT", left, -31)
-		subtitle:SetPoint("TOPRIGHT", -TITLE_RIGHT_RESERVE, -31)
+		subtitle:SetPoint("TOPRIGHT", -reserve, -31)
 	else
 		title:SetPoint("LEFT", left, 0)
-		title:SetPoint("RIGHT", -TITLE_RIGHT_RESERVE, 0)
+		title:SetPoint("RIGHT", -reserve, 0)
 	end
 end
 
@@ -308,6 +342,32 @@ local function UpdateStatus()
 	AnchorTitle(conv and true or false, text ~= "")
 end
 
+-- Shows the member button and panel for guild and group chats, and moves the
+-- messages over when the panel is open.
+function Window.UpdateMembers()
+	if not frame then return end
+	local supported = not settingsOpen and ns.Members.Supports(ns.selectedKey)
+	membersButton:SetShown(supported)
+	local open = supported and ns.Get("showMembers") and true or false
+	ns.Widgets.SetIconButtonActive(membersButton, open)
+	if open ~= membersOpen then
+		membersOpen = open
+		membersPanel:SetShown(open)
+		LayoutBody()
+		refreshAfterResize()
+		-- Opening the panel is the moment fresh guild data is wanted.
+		if open and ns.Members.IsGuild(ns.selectedKey) then ns.Members.RequestGuildRoster() end
+	end
+	if open then ns.Members.Refresh() end
+end
+
+ns.On("COMPOSER_RESIZED", function(extraHeight)
+	replyBarHeight = extraHeight or 0
+	if not (frame and messages and membersPanel) then return end
+	LayoutBody()
+	refreshAfterResize()
+end)
+
 -- The name on top, with the chat's note under it when there is one.
 local function UpdateTitle()
 	if not frame then return end
@@ -316,11 +376,11 @@ local function UpdateTitle()
 	local showsChat = conv ~= nil and not settingsOpen
 
 	if settingsOpen then
-		title:SetText("Settings")
+		title:SetText(L["Settings"])
 	elseif conv then
 		title:SetText(ns.Store.LabelFor(ns.selectedKey, conv))
 	else
-		title:SetText(hasChats and "Select a conversation" or "No conversations yet")
+		title:SetText(hasChats and L["Select a conversation"] or L["No conversations yet"])
 	end
 	emptyHint:SetShown(not hasChats)
 
@@ -339,6 +399,14 @@ local function UpdateTitle()
 		ns.Widgets.SetIconButtonActive(pinButton, conv.pin)
 		ns.Widgets.SetIconButtonActive(muteButton, conv.mute)
 	end
+	-- Takes the place of the pin and mute buttons when they aren't shown.
+	membersButton:ClearAllPoints()
+	if canPin then
+		membersButton:SetPoint("RIGHT", pinButton, "LEFT", -2, 0)
+	else
+		membersButton:SetPoint("RIGHT", muteButton, "RIGHT")
+	end
+	Window.UpdateMembers()
 	UpdateStatus()
 end
 
@@ -396,9 +464,11 @@ end
 
 local function Fade()
 	faded = true
+	ns.MessageList.HideTooltip()
 	frame:SetAlpha(ns.Get("combatOpacity") / 100)
 	DisableMouse(frame)
 	ns.Sidebar.Refresh()
+	ns.Members.Refresh()
 	ns.MessageList.Refresh()
 	UpdateActive()
 end
@@ -422,6 +492,8 @@ local function OnEnterCombat()
 	ns.Sidebar.ClearSearchFocus()
 	ns.SettingsUI.Hide()
 	ns.EmojiPicker.Hide()
+	ns.QuickSwitch.Hide()
+	ns.Composer.HidePopup()
 	if mode == "hide" then
 		hiddenForCombat = true
 		frame:Hide()
@@ -522,6 +594,7 @@ ns.On("MESSAGE_ADDED", SelectIfEmpty)
 ns.On("LOCKED_ADDED", SelectIfEmpty)
 ns.On("LOCKDOWN_CHANGED", UpdateRestriction)
 ns.On("TYPING_CHANGED", UpdateStatus)
+ns.On("ROSTER_CHANGED", UpdateStatus)
 ns.On("SETTINGS_TOGGLED", function(isOpen)
 	settingsOpen = isOpen
 	UpdateTitle()
