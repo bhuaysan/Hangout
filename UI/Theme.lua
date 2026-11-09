@@ -156,6 +156,13 @@ local function Luminance(r, g, b)
 	return 0.2126 * LinearChannel(r) + 0.7152 * LinearChannel(g) + 0.0722 * LinearChannel(b)
 end
 
+-- The game's fonts cast a black shadow, which smears dark text on a light surface.
+function Theme.TextShadow()
+	local text, bg = tokens.text, tokens.bg
+	local isDarkText = Luminance(text[1], text[2], text[3]) < Luminance(bg[1], bg[2], bg[3])
+	return 0, 0, 0, isDarkText and 0 or 1
+end
+
 local function Contrast(luminanceA, luminanceB)
 	local lighter = math.max(luminanceA, luminanceB)
 	local darker = math.min(luminanceA, luminanceB)

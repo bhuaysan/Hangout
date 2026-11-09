@@ -324,7 +324,7 @@ local function InitRow(frame, element)
 		label = ""
 	end
 	frame.text:SetText(label)
-	frame.text:SetFontObject((isRow or isResult) and "GameFontHighlight" or "GameFontDisableSmall")
+	ns.Widgets.SetTextFont(frame.text, (isRow or isResult) and "GameFontHighlight" or "GameFontDisableSmall")
 	if isRow and not element.muted then
 		local overlay = element.key == ns.selectedKey and "selected" or nil
 		frame.text:SetTextColor(ns.Theme.ClassColor(element.class, "sidebar", overlay))

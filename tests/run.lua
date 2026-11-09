@@ -1375,6 +1375,33 @@ Test("every theme's accent is readable on its own surfaces", function()
 	end
 end)
 
+Test("dark text on a light theme has no shadow, and follows theme changes", function()
+	local ns = Boot()
+	local shadowAlpha
+	local region = stubs.Tolerant()
+	region.SetShadowColor = function(_, _, _, _, a) shadowAlpha = a end
+	local frame = { CreateFontString = function() return region end }
+
+	ns.Theme.SetPreset("paper")
+	ns.Widgets.Text(frame, "GameFontHighlight", "text")
+	Equal(shadowAlpha, 0)
+	ns.Theme.SetPreset("midnight")
+	Equal(shadowAlpha, 1)
+	ns.Theme.SetCustom("bg", 1, 1, 1)
+	ns.Theme.SetCustom("text", 0, 0, 0)
+	Equal(shadowAlpha, 0)
+end)
+
+Test("swapping a font keeps the theme's shadow", function()
+	local ns = Boot()
+	local calls = {}
+	local region = stubs.Tolerant()
+	region.SetFontObject = function() calls[#calls + 1] = "font" end
+	region.SetShadowColor = function() calls[#calls + 1] = "shadow" end
+	ns.Widgets.SetTextFont(region, "GameFontHighlight")
+	Equal(table.concat(calls, ","), "font,shadow")
+end)
+
 Test("every emoji sits in exactly one picker tab", function()
 	local ns = Boot()
 	local seen = {}

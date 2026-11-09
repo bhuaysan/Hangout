@@ -43,6 +43,7 @@ end
 local function PaintRegion(entry)
 	if entry.isText then
 		entry.region:SetTextColor(ns.Theme.Color(entry.token))
+		entry.region:SetShadowColor(ns.Theme.TextShadow())
 	elseif entry.isTint then
 		entry.region:SetVertexColor(ns.Theme.Color(entry.token))
 	else
@@ -81,6 +82,12 @@ function Widgets.Text(frame, fontObject, token)
 	Track(text, token, true)
 	text:SetJustifyH("LEFT")
 	return text
+end
+
+-- Swaps a themed text's font. A font object brings its own shadow, so the theme's goes back on.
+function Widgets.SetTextFont(text, fontObject)
+	text:SetFontObject(fontObject)
+	text:SetShadowColor(ns.Theme.TextShadow())
 end
 
 -- A rounded shape that stretches cleanly. Color it with SetVertexColor.
@@ -285,6 +292,7 @@ function Widgets.Field(parent, width)
 	field:SetPoint("TOPLEFT", 6, 0)
 	field:SetPoint("BOTTOMRIGHT", -6, 0)
 	field:SetFontObject(GameFontHighlight)
+	Track(field, "text", true)
 	field:SetAutoFocus(false)
 	field:SetScript("OnEscapePressed", field.ClearFocus)
 	return holder, field
