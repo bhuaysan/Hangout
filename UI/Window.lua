@@ -22,7 +22,9 @@ local EDGE_LEVEL_OFFSET = 35
 local GRIP_LEVEL_OFFSET = 40
 
 local frame, title, subtitle, header, banner, messages, sidebar, emptyHint
-local collapseButton, closeButton, settingsButton, muteButton, pinButton, avatar
+local collapseButton, closeButton, settingsButton, muteButton, pinButton, membersButton, avatar
+local composer, membersPanel
+local membersOpen = false
 local settingsOpen = false
 local faded = false
 local hiddenForCombat = false
@@ -163,6 +165,14 @@ local function CreateHeader()
 	pinButton = HeaderButton("pin", "Pin this chat")
 	pinButton:SetPoint("RIGHT", muteButton, "LEFT", -2, 0)
 	pinButton:SetScript("OnClick", function() ToggleField("pin") end)
+
+	-- The guild icon doubles as the members icon. UpdateTitle places it next to the pin.
+	membersButton = HeaderButton("guild", "Show or hide the member list")
+	membersButton:SetPoint("RIGHT", pinButton, "LEFT", -2, 0)
+	membersButton:SetScript("OnClick", function()
+		ns.Set("showMembers", not ns.Get("showMembers"))
+		Window.UpdateMembers()
+	end)
 end
 
 local function CreateBanner()
@@ -176,6 +186,16 @@ local function CreateBanner()
 	bannerText:SetPoint("RIGHT", -12, 0)
 	bannerText:SetWordWrap(false)
 	bannerText:SetText("Chat is restricted right now. Hangout can't send, and will catch up when it ends.")
+end
+
+-- The messages end where the member panel begins, and the panel sits under the
+-- restriction banner just as the messages do. The composer stays full width.
+local function LayoutBody()
+	local top = ns.Lockdown.IsActive() and -(BANNER_HEIGHT + 1) or -1
+	messages:SetPoint("TOPLEFT", header, "BOTTOMLEFT", 0, top)
+	messages:SetPoint("BOTTOMRIGHT", composer, "TOPRIGHT", membersOpen and -ns.Members.PANEL_WIDTH or 0, 1)
+	membersPanel:SetPoint("TOPRIGHT", header, "BOTTOMRIGHT", 0, top)
+	membersPanel:SetPoint("BOTTOMRIGHT", composer, "TOPRIGHT", 0, 1)
 end
 
 local function Create()
@@ -229,7 +249,7 @@ local function Create()
 	headerLine:SetPoint("TOPLEFT", header, "BOTTOMLEFT")
 	headerLine:SetPoint("TOPRIGHT", header, "BOTTOMRIGHT")
 
-	local composer = CreateFrame("Frame", nil, frame)
+	composer = CreateFrame("Frame", nil, frame)
 	composer:SetPoint("BOTTOMLEFT", sidebar, "BOTTOMRIGHT")
 	composer:SetPoint("BOTTOMRIGHT")
 	composer:SetHeight(COMPOSER_HEIGHT)
@@ -238,9 +258,9 @@ local function Create()
 	CreateBanner()
 
 	messages = CreateFrame("Frame", nil, frame)
-	messages:SetPoint("TOPLEFT", header, "BOTTOMLEFT", 0, -1)
-	messages:SetPoint("BOTTOMRIGHT", composer, "TOPRIGHT", 0, 1)
 	ns.MessageList.Create(messages)
+	membersPanel = ns.Members.Create(frame)
+	LayoutBody()
 
 	emptyHint = ns.Widgets.Text(messages, "HangoutFont", "muted")
 	emptyHint:SetPoint("LEFT", 24, 0)
@@ -258,7 +278,7 @@ local function UpdateRestriction()
 	if not frame then return end
 	local active = ns.Lockdown.IsActive()
 	banner:SetShown(active)
-	messages:SetPoint("TOPLEFT", header, "BOTTOMLEFT", 0, active and -(BANNER_HEIGHT + 1) or -1)
+	LayoutBody()
 	refreshAfterResize()
 end
 
@@ -274,7 +294,10 @@ function Window.SubtitleFor(key, conv)
 	if ns.Protocol.IsTyping(key) then return "typing..." end
 
 	local category = ns.CategoryOf(key)
-	if category == "group" then return "Group chat" end
+	if category == "group" then
+		local count = ns.Members.SubtitleCount(key)
+		return count ~= "" and ("Group chat  ·  " .. count) or "Group chat"
+	end
 	if category == "channel" then return "Channel" end
 
 	local parts = {}
@@ -288,16 +311,18 @@ end
 
 local function AnchorTitle(hasAvatar, hasSubtitle)
 	local left = hasAvatar and TITLE_LEFT_WITH_AVATAR or TITLE_LEFT_PLAIN
+	-- The members button takes one more slot from the title.
+	local reserve = TITLE_RIGHT_RESERVE + (membersButton:IsShown() and HEADER_BUTTON_SIZE + 2 or 0)
 	title:ClearAllPoints()
 	subtitle:ClearAllPoints()
 	if hasSubtitle then
 		title:SetPoint("TOPLEFT", left, -10)
-		title:SetPoint("TOPRIGHT", -TITLE_RIGHT_RESERVE, -10)
+		title:SetPoint("TOPRIGHT", -reserve, -10)
 		subtitle:SetPoint("TOPLEFT", left, -31)
-		subtitle:SetPoint("TOPRIGHT", -TITLE_RIGHT_RESERVE, -31)
+		subtitle:SetPoint("TOPRIGHT", -reserve, -31)
 	else
 		title:SetPoint("LEFT", left, 0)
-		title:SetPoint("RIGHT", -TITLE_RIGHT_RESERVE, 0)
+		title:SetPoint("RIGHT", -reserve, 0)
 	end
 end
 
@@ -308,6 +333,23 @@ local function UpdateStatus()
 	subtitle:SetText(text)
 	subtitle:SetShown(text ~= "")
 	AnchorTitle(conv and true or false, text ~= "")
+end
+
+-- Shows the member button and panel for guild and group chats, and moves the
+-- messages over when the panel is open.
+function Window.UpdateMembers()
+	if not frame then return end
+	local supported = not settingsOpen and ns.Members.Supports(ns.selectedKey)
+	membersButton:SetShown(supported)
+	local open = supported and ns.Get("showMembers") and true or false
+	ns.Widgets.SetIconButtonActive(membersButton, open)
+	if open ~= membersOpen then
+		membersOpen = open
+		membersPanel:SetShown(open)
+		LayoutBody()
+		refreshAfterResize()
+	end
+	if open then ns.Members.Refresh() end
 end
 
 -- The name on top, with the chat's note under it when there is one.
@@ -341,6 +383,14 @@ local function UpdateTitle()
 		ns.Widgets.SetIconButtonActive(pinButton, conv.pin)
 		ns.Widgets.SetIconButtonActive(muteButton, conv.mute)
 	end
+	-- Takes the place of the pin and mute buttons when they aren't shown.
+	membersButton:ClearAllPoints()
+	if canPin then
+		membersButton:SetPoint("RIGHT", pinButton, "LEFT", -2, 0)
+	else
+		membersButton:SetPoint("RIGHT", muteButton, "RIGHT")
+	end
+	Window.UpdateMembers()
 	UpdateStatus()
 end
 
@@ -402,6 +452,7 @@ local function Fade()
 	frame:SetAlpha(ns.Get("combatOpacity") / 100)
 	DisableMouse(frame)
 	ns.Sidebar.Refresh()
+	ns.Members.Refresh()
 	ns.MessageList.Refresh()
 	UpdateActive()
 end
@@ -527,6 +578,7 @@ ns.On("MESSAGE_ADDED", SelectIfEmpty)
 ns.On("LOCKED_ADDED", SelectIfEmpty)
 ns.On("LOCKDOWN_CHANGED", UpdateRestriction)
 ns.On("TYPING_CHANGED", UpdateStatus)
+ns.On("ROSTER_CHANGED", UpdateStatus)
 ns.On("SETTINGS_TOGGLED", function(isOpen)
 	settingsOpen = isOpen
 	UpdateTitle()

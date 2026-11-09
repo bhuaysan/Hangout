@@ -2226,6 +2226,8 @@ local function BootWithWindow()
 		ClearSearchFocus = function() end,
 	}
 	ns.MessageList = { Create = function() end, Refresh = function() end, HideTooltip = function() end }
+	-- The member panel's list widgets aren't stubbed; its roster logic stays real.
+	ns.Members.Create = function() return stubs.Tolerant() end
 	ns.On("SELECTION_CHANGED", function(key)
 		calls.selected = key
 		if not key then calls.cleared = calls.cleared + 1 end
@@ -3205,6 +3207,132 @@ Test("QuickSwitch offers a new whisper only for an unknown two-word name", funct
 	Equal(#results, 1)
 	Equal(results[1].whisper, "Nova Reed")
 	Equal(ns.QuickSwitch.Results(list, "mara")[1].key, "W:Mara Stone")
+end)
+
+Test("members sort online first, the leader first, then by name, and offline last", function()
+	local ns = Boot()
+	local list = ns.Members.Sort({
+		{ name = "Zed Quick", online = false },
+		{ name = "bob Stone", online = true },
+		{ name = "Alma Reed", online = true },
+		{ name = "Cora Vale", online = true, leader = true },
+		{ name = "Abel Moss", online = false, leader = true },
+	})
+	local names = {}
+	for _, member in ipairs(list) do names[#names + 1] = member.name end
+	Equal(table.concat(names, ","), "Cora Vale,Alma Reed,bob Stone,Abel Moss,Zed Quick")
+end)
+
+Test("the member count says how many are online, and the size of a guild", function()
+	local ns = Boot()
+	local list = { { online = true }, { online = false }, { online = true } }
+	Equal(ns.Members.CountText(list), "2 online")
+	Equal(ns.Members.CountText(list, true), "2 online  ·  3 members")
+	Equal(ns.Members.CountText({}), "", "nothing to count")
+	Equal(ns.Members.CountText(nil), "")
+end)
+
+Test("only guild and group chats have a roster", function()
+	local ns = Boot()
+	Equal(ns.Members.Roster("W:A B"), nil)
+	Equal(ns.Members.Roster("C:trade"), nil)
+	Equal(ns.Members.Supports("P:party"), true)
+	Equal(ns.Members.Supports("I:instance"), true)
+	Equal(ns.Members.Supports("Wx"), false)
+	Equal(ns.Members.Supports(nil), false)
+end)
+
+Test("the guild roster comes from the guild's own key and maps status and class", function()
+	local ns = Boot()
+	stubs.guildRoster = {
+		{ name = "Thrall Hellscream-Thunderstrike", online = true, status = 1, class = "SHAMAN", level = 70, rank = "Warchief", rankIndex = 0 },
+		{ name = "Jaina Proudmoore", online = false, status = 0, class = "MAGE", level = 69, rank = "Member", rankIndex = 3 },
+		{ name = "Sylvanas Windrunner", online = true, status = 2, class = "HUNTER", level = 70, rank = "Officer", rankIndex = 1 },
+	}
+	local key = ns.Identity.GuildKey("G")
+	local roster = ns.Members.Roster(key)
+	Equal(#roster, 3)
+	Equal(roster[1].name, "Thrall Hellscream")
+	Equal(roster[1].status, "afk")
+	Equal(roster[1].leader, true)
+	Equal(roster[1].class, "SHAMAN")
+	Equal(roster[1].level, 70)
+	Equal(roster[1].rank, "Warchief")
+	Equal(roster[2].online, false)
+	Equal(roster[2].status, nil)
+	Equal(roster[3].status, "dnd")
+	Equal(#ns.Members.Roster(ns.Identity.GuildKey("O")), 3, "officer chat shares the guild's roster")
+	Equal(#ns.Members.Roster("G:Other Guild-Thunderstrike"), 0, "another guild has nothing to show")
+	Equal(ns.Members.SubtitleCount(key), "2 online  ·  3 members")
+end)
+
+Test("the group roster lists the player and the party with status and leader", function()
+	local ns = Boot()
+	stubs.group = {
+		player = { name = "Me", surname = "Self", class = "SHAMAN" },
+		party1 = { name = "Dora", surname = "Fell", class = "PRIEST", leader = true, level = 62 },
+		party2 = { name = "Ned", surname = "Gray", class = "ROGUE", offline = true },
+		party3 = { name = "Ivy", surname = "Moon", class = "DRUID", afk = true },
+	}
+	local roster = ns.Members.Sort(ns.Members.Roster("P:party"))
+	Equal(#roster, 4)
+	Equal(roster[1].name, "Dora Fell")
+	Equal(roster[1].leader, true)
+	Equal(roster[1].level, 62)
+	Equal(roster[2].name, "Ivy Moon")
+	Equal(roster[2].status, "afk")
+	Equal(roster[3].name, "Me Self")
+	Equal(roster[4].name, "Ned Gray")
+	Equal(roster[4].online, false)
+	Equal(ns.Members.SubtitleCount("P:party"), "3 online")
+end)
+
+Test("the raid roster walks the raid units", function()
+	local ns = Boot()
+	stubs.inRaid = true
+	stubs.group = {
+		raid1 = { name = "Me", surname = "Self", class = "SHAMAN" },
+		raid2 = { name = "Dora", surname = "Fell", class = "PRIEST", leader = true },
+	}
+	local roster = ns.Members.Sort(ns.Members.Roster("R:raid"))
+	Equal(#roster, 2)
+	Equal(roster[1].name, "Dora Fell")
+	Equal(#ns.Members.Roster("I:instance"), 2, "an instance group is read the same way")
+end)
+
+Test("the guild roster is requested at most once every ten seconds", function()
+	local ns = Boot()
+	local requests = 0
+	C_GuildInfo.GuildRoster = function() requests = requests + 1 end
+	stubs.time = 1000
+	Equal(ns.Members.RequestGuildRoster(), true)
+	stubs.time = 1005
+	Equal(ns.Members.RequestGuildRoster(), false)
+	stubs.time = 1010
+	Equal(ns.Members.RequestGuildRoster(), true)
+	Equal(requests, 2)
+end)
+
+Test("the header line adds the online count to guild and group chats", function()
+	local ns = Boot()
+	stubs.guildRoster = {
+		{ name = "Thrall Hellscream", online = true, status = 0 },
+		{ name = "Jaina Proudmoore", online = false, status = 0 },
+	}
+	Equal(ns.Window.SubtitleFor(ns.Identity.GuildKey("G"), {}), "Group chat  ·  1 online  ·  2 members")
+	stubs.group = { player = { name = "Me", surname = "Self" }, party1 = { name = "Dora", surname = "Fell" } }
+	Equal(ns.Window.SubtitleFor("P:party", {}), "Group chat  ·  2 online")
+	Equal(ns.Window.SubtitleFor("C:trade", {}), "Channel")
+end)
+
+Test("opening a group chat with the member list on lays out the window without error", function()
+	local ns = BootWithWindow()
+	Chat(ns, "CHAT_MSG_PARTY", { text = "hi", name = "Dora Fell" })
+	ns.Set("showMembers", true)
+	ns.Window.Open("P:party")
+	Equal(ns.selectedKey, "P:party")
+	ns.Window.Select("P:party")
+	ns.Window.Toggle()
 end)
 
 local failures = 0
