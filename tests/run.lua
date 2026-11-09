@@ -2877,6 +2877,147 @@ Test("Game Master messages are flagged in the list and the glance strip", functi
 	assert(not lines[2].name:find("GM$"), "normal line should not")
 end)
 
+local function Entries(spec)
+	local list = {}
+	for _, item in ipairs(spec) do
+		local conv = { m = {}, lastT = 0 }
+		for k, v in pairs(item[2] or {}) do conv[k] = v end
+		list[#list + 1] = { key = item[1], conv = conv }
+	end
+	return list
+end
+
+local function Joined(keys) return table.concat(keys, ",") end
+
+Test("NextKey follows the sidebar order, wraps, and skips requests", function()
+	local ns = Boot()
+	-- Store order is by recency; the sidebar shows pinned, whispers, group, channels, requests.
+	local list = Entries({
+		{ "C:Trade" }, { "W:Amy One" }, { "P:party" }, { "W:Req Er", { req = true } },
+		{ "W:Pin Ned", { pin = true } }, { "G:Guild" },
+	})
+	-- Visual order: Pin Ned, Amy One, party, Guild, Trade.
+	Equal(ns.Keys.NextKey(list, "W:Pin Ned", 1), "W:Amy One")
+	Equal(ns.Keys.NextKey(list, "W:Amy One", 1), "P:party")
+	Equal(ns.Keys.NextKey(list, "P:party", 1), "G:Guild")
+	Equal(ns.Keys.NextKey(list, "C:Trade", 1), "W:Pin Ned", "wraps forward past the request")
+	Equal(ns.Keys.NextKey(list, "W:Pin Ned", -1), "C:Trade", "wraps backward")
+	Equal(ns.Keys.NextKey(list, "G:Guild", -1), "P:party")
+	Equal(ns.Keys.NextKey(list, "W:Req Er", 1), "W:Pin Ned", "from a request starts at the top")
+	Equal(ns.Keys.NextKey(list, nil, -1), "C:Trade", "with no chat open, backward starts at the end")
+	Equal(ns.Keys.NextKey({}, nil, 1), nil)
+end)
+
+Test("NextKey with unreadOnly only lands on unread chats", function()
+	local ns = Boot()
+	local list = Entries({
+		{ "W:Amy One" }, { "P:party", { unread = 2 } }, { "G:Guild" }, { "C:Trade", { unread = 1 } },
+	})
+	Equal(ns.Keys.NextKey(list, "W:Amy One", 1, true), "P:party")
+	Equal(ns.Keys.NextKey(list, "P:party", 1, true), "C:Trade")
+	Equal(ns.Keys.NextKey(list, "C:Trade", 1, true), "P:party", "wraps")
+	Equal(ns.Keys.NextKey(list, "W:Amy One", -1, true), "C:Trade")
+	local onlyCurrent = Entries({ { "W:Amy One" }, { "P:party", { unread = 3 } } })
+	Equal(ns.Keys.NextKey(onlyCurrent, "P:party", 1, true), nil, "nothing else is unread")
+	Equal(ns.Keys.NextKey(Entries({ { "W:A B" }, { "W:C D" } }), "W:A B", 1, true), nil)
+	local requestOnly = Entries({ { "W:Amy One" }, { "W:Req Er", { req = true, unread = 4 } } })
+	Equal(ns.Keys.NextKey(requestOnly, "W:Amy One", 1, true), nil, "unread requests are skipped")
+end)
+
+Test("NextKey agrees with the rows the sidebar builds", function()
+	local ns = Boot()
+	local list = Entries({
+		{ "C:Trade" }, { "W:Amy One" }, { "B:Pal#1" }, { "O:officer" }, { "W:Pin Ned", { pin = true } },
+		{ "R:raid" }, { "W:Req Er", { req = true } },
+	})
+	local visual = {}
+	for _, group in ipairs(ns.Sidebar.Groups(list)) do
+		for _, entry in ipairs(group.entries) do visual[#visual + 1] = entry.key end
+	end
+	Equal(visual[1], "W:Pin Ned")
+	Equal(visual[#visual], "W:Req Er")
+	table.remove(visual) -- the request is never stepped to
+	local walked, key = { "W:Pin Ned" }, "W:Pin Ned"
+	for _ = 2, #visual do
+		key = ns.Keys.NextKey(list, key, 1)
+		walked[#walked + 1] = key
+	end
+	Equal(Joined(walked), Joined(visual))
+end)
+
+Test("OnComposerKey handles the shortcuts and ignores other keys", function()
+	local ns = Boot()
+	local alt, shift, ctrl = false, false, false
+	_G.IsAltKeyDown = function() return alt end
+	_G.IsShiftKeyDown = function() return shift end
+	_G.IsControlKeyDown = function() return ctrl end
+	local opened, toggled = {}, 0
+	ns.Window.Open = function(key) opened[#opened + 1] = key end
+	ns.Composer.Focus = function() end
+	ns.Window.IsFaded = function() return false end
+	ns.QuickSwitch.Toggle = function() toggled = toggled + 1 end
+	local base = Entries({
+		{ "W:Amy One", { lastT = 3 } }, { "W:Bob Two", { lastT = 2, unread = 1 } }, { "W:Cy Three", { lastT = 1 } },
+	})
+	ns.Store.List = function() return base end
+	ns.selectedKey = "W:Amy One"
+
+	Equal(ns.Keys.OnComposerKey(nil, "DOWN"), nil, "plain Down is not ours")
+	alt = true
+	Equal(ns.Keys.OnComposerKey(nil, "DOWN"), true)
+	Equal(opened[1], "W:Bob Two")
+	Equal(ns.Keys.OnComposerKey(nil, "UP"), true)
+	Equal(opened[2], "W:Cy Three")
+	shift = true
+	Equal(ns.Keys.OnComposerKey(nil, "DOWN"), true)
+	Equal(opened[3], "W:Bob Two", "Alt+Shift jumps to the unread chat")
+	alt, shift = false, false
+	Equal(ns.Keys.OnComposerKey(nil, "K"), nil)
+	ctrl = true
+	Equal(ns.Keys.OnComposerKey(nil, "K"), true)
+	Equal(toggled, 1)
+	Equal(ns.Keys.OnComposerKey(nil, "J"), nil)
+	_G.IsAltKeyDown, _G.IsShiftKeyDown, _G.IsControlKeyDown = nil, nil, nil
+end)
+
+Test("QuickSwitch.Rank puts unread first on an empty query", function()
+	local ns = Boot()
+	local list = Entries({
+		{ "W:Amy One" }, { "W:Bob Two", { unread = 2 } }, { "G:Guild" }, { "W:Cy Three", { unread = 1 } },
+		{ "W:Req Er", { req = true, unread = 5 } },
+	})
+	Equal(Joined(ns.QuickSwitch.Rank(list, "")), "W:Bob Two,W:Cy Three,W:Amy One,G:Guild")
+end)
+
+Test("QuickSwitch.Rank prefers prefixes, matches nicknames and drops requests", function()
+	local ns = Boot()
+	local list = Entries({
+		{ "W:Mara Stone" }, { "W:Tamara Vale" }, { "W:Zed Quick", { nick = "Maraud" } },
+		{ "C:Marathon" }, { "W:Mara Req", { req = true } }, { "W:Other Person" },
+	})
+	for _, entry in ipairs(list) do entry.conv.name = entry.key:sub(3) end
+	-- Prefix matches first, each group in list order.
+	Equal(Joined(ns.QuickSwitch.Rank(list, "MARA")), "W:Mara Stone,W:Zed Quick,C:Marathon,W:Tamara Vale")
+	-- The raw name still matches when a nickname hides it from the label.
+	Equal(Joined(ns.QuickSwitch.Rank(list, "quick")), "W:Zed Quick")
+	Equal(Joined(ns.QuickSwitch.Rank(list, "zzz")), "")
+end)
+
+Test("QuickSwitch offers a new whisper only for an unknown two-word name", function()
+	local ns = Boot()
+	local list = Entries({ { "W:Mara Stone" }, { "G:Guild" } })
+	for _, entry in ipairs(list) do entry.conv.name = entry.key:sub(3) end
+	Equal(ns.QuickSwitch.NewWhisperName(list, "Nova Reed"), "Nova Reed")
+	Equal(ns.QuickSwitch.NewWhisperName(list, "Nova-Reed"), "Nova Reed")
+	Equal(ns.QuickSwitch.NewWhisperName(list, "Nova"), nil, "one word is not enough")
+	Equal(ns.QuickSwitch.NewWhisperName(list, "mara stone"), nil, "the chat already exists")
+	Equal(ns.QuickSwitch.NewWhisperName(list, ""), nil)
+	local results = ns.QuickSwitch.Results(list, "Nova Reed")
+	Equal(#results, 1)
+	Equal(results[1].whisper, "Nova Reed")
+	Equal(ns.QuickSwitch.Results(list, "mara")[1].key, "W:Mara Stone")
+end)
+
 local failures = 0
 for _, test in ipairs(tests) do
 	local ok, err = xpcall(test.fn, debug.traceback)

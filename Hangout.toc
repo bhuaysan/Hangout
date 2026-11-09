@@ -29,6 +29,8 @@ UI\Sidebar.lua
 UI\ProfileBar.lua
 UI\EmojiPicker.lua
 UI\Composer.lua
+UI\QuickSwitch.lua
+UI\Keys.lua
 UI\Toast.lua
 UI\Glance.lua
 UI\Settings.lua

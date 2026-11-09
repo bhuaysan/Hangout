@@ -5,4 +5,10 @@
 	<Binding name="HANGOUT_REPLY" category="Hangout">
 		Hangout_Reply()
 	</Binding>
+	<Binding name="HANGOUT_NEXT_UNREAD" category="Hangout">
+		Hangout_NextUnread()
+	</Binding>
+	<Binding name="HANGOUT_QUICK_SWITCH" category="Hangout">
+		Hangout_QuickSwitch()
+	</Binding>
 </Bindings>
