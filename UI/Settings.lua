@@ -383,6 +383,7 @@ local function BuildBehavior()
 	Toggle(L["Send read receipts"], "sendReadReceipts")
 	Toggle(L["Hide whispers from normal chat"], "hideWhispers", function() ns.Filter.Apply() end)
 	Toggle(L["Show minimap button"], "showMinimap", function() ns.Launcher.UpdateVisibility() end)
+	Toggle(L["Show say, yell and emotes"], "showNearby")
 end
 
 local function BuildHistory()

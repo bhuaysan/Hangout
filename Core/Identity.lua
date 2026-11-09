@@ -114,6 +114,7 @@ local function RebuildPresence()
 	ScanGuild()
 	ScanFriends()
 	ScanBattleNet()
+	ns.Fire("PRESENCE_CHANGED")
 	ns.Fire("CONV_CHANGED")
 end
 

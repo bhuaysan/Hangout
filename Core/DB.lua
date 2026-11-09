@@ -75,7 +75,8 @@ function DB.RegisterCharacter(fullName)
 end
 
 local function HasUserData(conv)
-	return conv.pin or conv.mute or conv.nick or conv.note or (conv.draft and conv.draft ~= "")
+	return conv.pin or conv.mute or conv.nick or conv.note or conv.vip or conv.notify or conv.watch
+		or (conv.draft and conv.draft ~= "")
 end
 
 local function RetentionSeconds(key)
@@ -113,20 +114,25 @@ local function PruneByAgeAndChatCap(key, conv, now)
 	local messages = conv.m
 	if not conv.pin then
 		local cutoff = now - RetentionSeconds(key)
-		Filter(messages, function(message) return message.t >= cutoff end)
+		Filter(messages, function(message) return message.b or message.t >= cutoff end)
+		if conv.groups then
+			Filter(conv.groups, function(session) return session.t >= cutoff end)
+			if #conv.groups == 0 then conv.groups = nil end
+		end
 	end
 
 	local excess = #messages - ns.Get("perChatCap")
 	if excess > 0 then
-		local position = 0
-		Filter(messages, function()
-			position = position + 1
-			return position > excess
+		local removed = 0
+		Filter(messages, function(message)
+			if message.b or removed >= excess then return true end
+			removed = removed + 1
+			return false
 		end)
 	end
 end
 
--- Eviction order when over the global cap: group and channel history first,
+-- Saved messages are never evicted. Eviction order when over the global cap: group and channel history first,
 -- then whispers, and pinned chats only as a last resort.
 local function EvictionTier(key, conv)
 	if conv.pin then return 3 end
@@ -139,7 +145,7 @@ local function EvictTier(tier, excess)
 	for key, conv in pairs(ns.db.conv) do
 		if EvictionTier(key, conv) == tier then
 			for i = 1, #conv.m do
-				times[#times + 1] = conv.m[i].t
+				if not conv.m[i].b then times[#times + 1] = conv.m[i].t end
 			end
 		end
 	end
@@ -150,7 +156,7 @@ local function EvictTier(tier, excess)
 	local removed = 0
 	for key, conv in pairs(ns.db.conv) do
 		if EvictionTier(key, conv) == tier then
-			removed = removed + Filter(conv.m, function(message) return message.t > cutoff end)
+			removed = removed + Filter(conv.m, function(message) return message.b or message.t > cutoff end)
 		end
 	end
 	return removed

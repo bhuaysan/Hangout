@@ -32,6 +32,10 @@ local ROUTES = {
 	CHAT_MSG_INSTANCE_CHAT = { kind = "group", key = "I:instance", label = L["Instance"] },
 	CHAT_MSG_INSTANCE_CHAT_LEADER = { kind = "group", key = "I:instance", label = L["Instance"] },
 	CHAT_MSG_CHANNEL = { kind = "channel" },
+	CHAT_MSG_SAY = { kind = "nearby", key = "N:nearby", label = L["Nearby"] },
+	CHAT_MSG_YELL = { kind = "nearby", key = "N:nearby", label = L["Nearby"] },
+	CHAT_MSG_EMOTE = { kind = "nearby", key = "N:nearby", label = L["Nearby"] },
+	CHAT_MSG_TEXT_EMOTE = { kind = "nearby", key = "N:nearby", label = L["Nearby"] },
 	-- Status events: readable ones become notices, secret ones are simply skipped.
 	CHAT_MSG_SYSTEM = { kind = "system", status = true },
 	CHAT_MSG_BN_WHISPER_PLAYER_OFFLINE = { kind = "bnetOffline", status = true },
@@ -55,7 +59,7 @@ end
 local function RoomKey(route, channelName, channelBaseName)
 	if route.kind == "guild" then
 		return ns.Identity.GuildKey(route.prefix), route.label
-	elseif route.kind == "group" then
+	elseif route.kind == "group" or route.kind == "nearby" then
 		return route.key, route.label
 	elseif route.kind == "channel" then
 		return ChannelKey(channelName, channelBaseName)
@@ -142,7 +146,7 @@ local function HandleRoom(route, text, playerName, channelName, channelIndex, ch
 
 	local sender = ns.Util.NormalizeName(playerName)
 	local now = GetServerTime()
-	if route.kind == "channel" and sender and not isGM and ScreenChannel(sender, text, now) then
+	if (route.kind == "channel" or route.kind == "nearby") and sender and not isGM and ScreenChannel(sender, text, now) then
 		return
 	end
 
@@ -203,6 +207,7 @@ end
 local function OnChatEvent(_, event, text, playerName, _, channelName, _, specialFlags, _, channelIndex, channelBaseName, _, lineID, guid, bnSenderID)
 	local route = ROUTES[event]
 	if not route then return end
+	if route.kind == "nearby" and not ns.Get("showNearby") then return end
 
 	if canaccessvalue(text) and canaccessvalue(playerName) and canaccessvalue(guid) and canaccessvalue(bnSenderID) then
 		if route.status then
@@ -237,7 +242,7 @@ end
 
 local function RecoverRoom(route, element, key, name, text, class)
 	if key == Capture.LOCKED_KEY then return false end
-	if route.kind == "channel" and not element.gm and ScreenChannel(name, text, element.t) then
+	if (route.kind == "channel" or route.kind == "nearby") and not element.gm and ScreenChannel(name, text, element.t) then
 		return true
 	end
 	ns.Store.Add(key, nil, {

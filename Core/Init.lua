@@ -45,6 +45,8 @@ boot:SetScript("OnEvent", function(self, event, loadedName)
 		ns.Capture.Start()
 		ns.Protocol.Init()
 		ns.Launcher.Init()
+		ns.Later.Init()
+		ns.Watch.Init()
 		ns.Filter.Apply()
 		ns.SettingsUI.Init()
 	end

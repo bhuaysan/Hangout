@@ -4067,6 +4067,534 @@ Test("answering someone else still marks their chat as read", function()
 	Equal(ns.Store.UnreadCount(key, ns.Store.Get(key)), 0)
 end)
 
+local function LastPopup(ns)
+	local shown = {}
+	ns.Toast.Show = function(key, conv, record) shown[#shown + 1] = { key = key, record = record } end
+	return shown
+end
+
+Test("the test mode plays situations through the real chat path", function()
+	local ns = Boot()
+	stubs.allStrangers = true
+	Equal(ns.TestMode.Run("nonsense"), false)
+	assert(stubs.printed[#stubs.printed]:find("whisper", 1, true))
+	ns.TestMode.Run("whisper")
+	Equal(ns.Store.UnreadCount("W:Testa Freund", ns.Store.Get("W:Testa Freund")), 1)
+	ns.TestMode.Run("request")
+	Equal(ns.Store.Get("W:Testo Fremder").req, true)
+	ns.TestMode.Run("clear")
+	Equal(ns.Store.Get("W:Testa Freund"), nil)
+	Equal(ns.Store.Get("W:Testo Fremder"), nil)
+end)
+
+Test("every test situation runs without an error", function()
+	local ns = Boot()
+	LastPopup(ns)
+	for _, name in ipairs(ns.TestMode.Names()) do
+		assert(ns.TestMode.Run(name), name)
+	end
+end)
+
+Test("a simulated restriction blocks sending and can be ended", function()
+	local ns = Boot()
+	ns.Lockdown.Simulate(true)
+	Equal(ns.Lockdown.IsActive(), true)
+	ns.Lockdown.Simulate(false)
+	Equal(ns.Lockdown.IsActive(), false)
+end)
+
+local function Decide(ns, key, conv, mention) return ns.Alerts.Decide(key, conv, mention) end
+
+Test("a chat set to mentions only stays quiet until mentioned", function()
+	local ns = Boot()
+	local conv = { notify = "mentions" }
+	Equal(Decide(ns, "W:A B", conv, false), nil)
+	assert(Decide(ns, "W:A B", conv, true))
+end)
+
+Test("a chat set to all messages alerts even where the defaults are quiet", function()
+	local ns = Boot()
+	local decision = Decide(ns, "G:x", { notify = "all" }, false)
+	Equal(decision.sound, "ping")
+	Equal(decision.toast, true)
+	Equal(decision.flash, true)
+	assert(Decide(ns, "C:trade", { notify = "all" }, false), "channels too")
+	Equal(Decide(ns, "C:trade", {}, false), nil)
+end)
+
+Test("an important contact gets through Do Not Disturb, but not a mute", function()
+	local ns = Boot()
+	ns.Set("dnd", true)
+	Equal(Decide(ns, "W:A B", {}, false), nil)
+	assert(Decide(ns, "W:A B", { vip = true }, false))
+	Equal(Decide(ns, "W:A B", { vip = true, mute = true }, false), nil)
+end)
+
+Test("a timed mute ends on its own, and a manual change cancels the timer", function()
+	local ns = Boot()
+	ns.Store.Ensure("W:A B", { name = "A B" })
+	ns.Store.MuteFor("W:A B", 3600)
+	local conv = ns.Store.Get("W:A B")
+	Equal(conv.mute, true)
+	ns.Store.ExpireMutes(stubs.serverTime + 3599)
+	Equal(conv.mute, true)
+	ns.Store.ExpireMutes(stubs.serverTime + 3600)
+	Equal(conv.mute, nil)
+	Equal(conv.muteUntil, nil)
+
+	ns.Store.MuteFor("W:A B", 3600)
+	ns.Store.SetField("W:A B", "mute", nil)
+	Equal(conv.muteUntil, nil)
+end)
+
+Test("the next midnight is the start of the following day", function()
+	local ns = Load()
+	local day = 86400
+	Equal(ns.Util.NextMidnight(day * 5 + 3600), day * 6)
+end)
+
+Test("composer commands act on the open chat", function()
+	local ns = Boot()
+	ns.Store.Ensure("W:A B", { name = "A B" })
+	local conv = ns.Store.Get("W:A B")
+	Equal(ns.Commands.Run("W:A B", "/nope"), false)
+	assert(ns.Commands.Run("W:A B", "/nick Buddy"))
+	Equal(conv.nick, "Buddy")
+	assert(ns.Commands.Run("W:A B", "/note likes fishing"))
+	Equal(conv.note, "likes fishing")
+	assert(ns.Commands.Run("W:A B", "/nick"))
+	Equal(conv.nick, nil)
+	assert(ns.Commands.Run("W:A B", "/mute 30m"))
+	Equal(conv.muteUntil, stubs.serverTime + 1800)
+	assert(ns.Commands.Run("W:A B", "/unmute"))
+	Equal(conv.mute, nil)
+	assert(ns.Commands.Run("W:A B", "/MUTE"), "any case")
+	Equal(conv.mute, true)
+	Equal(conv.muteUntil, nil, "plain mute has no timer")
+end)
+
+Test("whisper-only commands refuse other chats", function()
+	local ns = Boot()
+	ns.Store.Ensure("G:x", { name = "Guild" })
+	assert(ns.Commands.Run("G:x", "/nick Boss"))
+	Equal(ns.Store.Get("G:x").nick, nil)
+end)
+
+Test("durations accept minutes, hours and tomorrow", function()
+	local ns = Load()
+	Equal(ns.Commands.ParseDuration("45m", 0), 2700)
+	Equal(ns.Commands.ParseDuration("2H", 0), 7200)
+	Equal(ns.Commands.ParseDuration("morgen", 3600), 82800)
+	Equal(ns.Commands.ParseDuration("soon", 0), nil)
+	Equal(ns.Commands.ParseDuration("0m", 0), nil)
+end)
+
+local function WhisperChat(ns, count)
+	for index = 1, count do
+		Chat(ns, "CHAT_MSG_WHISPER", { text = "m" .. index, name = "A B" })
+	end
+	return ns.Store.Get("W:A B")
+end
+
+Test("messages written during a restriction wait and can be sent afterwards", function()
+	local ns = Boot()
+	ns.Store.Ensure("W:A B", { name = "A B" })
+	stubs.lockdown = true
+	Equal(ns.Outbox.Add("W:A B", " later "), true)
+	Equal(ns.Outbox.Count(), 1)
+	Equal(ns.Outbox.IsReady(), false)
+	Equal(ns.Store.GetNotices("W:A B")[1].kind, "queued")
+	Equal(ns.Store.GetNotices("W:A B")[1].text, "later")
+
+	ns.Outbox.SendAll()
+	Equal(ns.Outbox.Count(), 1, "still restricted")
+	Equal(#stubs.sent, 0)
+
+	stubs.lockdown = false
+	Equal(ns.Outbox.IsReady(), true)
+	ns.Outbox.SendAll()
+	Equal(ns.Outbox.Count(), 0)
+	Equal(#stubs.sent, 1)
+	Equal(#ns.Store.GetNotices("W:A B"), 0)
+end)
+
+Test("waiting messages can be sent one by one or discarded", function()
+	local ns = Boot()
+	ns.Store.Ensure("W:A B", { name = "A B" })
+	stubs.lockdown = true
+	ns.Outbox.Add("W:A B", "one")
+	ns.Outbox.Add("W:A B", "two")
+	stubs.lockdown = false
+	local notices = ns.Store.GetNotices("W:A B")
+	ns.Outbox.Discard(notices[1])
+	Equal(ns.Outbox.Count(), 1)
+	Equal(#stubs.sent, 0)
+	ns.Outbox.SendNotice(notices[1])
+	Equal(ns.Outbox.Count(), 0)
+	Equal(#stubs.sent, 1)
+end)
+
+Test("the outbox refuses chats that can never receive and oversized text", function()
+	local ns = Boot()
+	local queued = ns.Outbox.Add("L:restricted", "x")
+	Equal(queued, false)
+	Equal(ns.Outbox.Add("N:nearby", "x"), false)
+	local ok, reason = ns.Outbox.Add("W:A B", ("x"):rep(2000))
+	Equal(ok, false)
+	Equal(reason, "tooLong")
+end)
+
+Test("waiting messages appear as rows in the chat", function()
+	local ns = Boot()
+	ns.Store.Ensure("W:A B", { name = "A B" })
+	ns.Outbox.Add("W:A B", "later")
+	Equal(ElementKinds(ns, "W:A B"), "queued")
+end)
+
+Test("an online alert fires only when a watched contact really comes online", function()
+	local ns = Boot()
+	local popups = LastPopup(ns)
+	ns.Store.Ensure("W:A B", { name = "A B" })
+	local presence = false
+	ns.Identity.Presence = function() return presence end
+	ns.Watch.Set("W:A B", true)
+	stubs.time = stubs.time + 30
+
+	ns.Watch.Check()
+	Equal(#popups, 0, "still offline")
+	presence = true
+	ns.Watch.Check()
+	Equal(#popups, 1)
+	Equal(popups[1].record.x, "A B is now online.")
+	ns.Watch.Check()
+	Equal(#popups, 1, "only the change counts")
+end)
+
+Test("online alerts stay quiet after login, in Do Not Disturb and during restrictions", function()
+	local ns = Boot()
+	local popups = LastPopup(ns)
+	ns.Store.Ensure("W:A B", { name = "A B" })
+	local presence = false
+	ns.Identity.Presence = function() return presence end
+	ns.Watch.Set("W:A B", true)
+
+	presence = true
+	ns.Watch.Check()
+	Equal(#popups, 0, "login grace")
+
+	stubs.time = stubs.time + 30
+	presence = false
+	ns.Watch.Check()
+	ns.Set("dnd", true)
+	presence = true
+	ns.Watch.Check()
+	Equal(#popups, 0, "dnd")
+	ns.Set("dnd", false)
+
+	presence = false
+	ns.Watch.Check()
+	stubs.lockdown = true
+	presence = nil
+	ns.Watch.Check()
+	stubs.lockdown = false
+	presence = true
+	ns.Watch.Check()
+	Equal(#popups, 1, "a restriction doesn't count as going offline, the real change does")
+end)
+
+Test("a contact missing from the roster counts as offline", function()
+	local ns = Boot()
+	local popups = LastPopup(ns)
+	ns.Store.Ensure("W:A B", { name = "A B" })
+	local presence = true
+	ns.Identity.Presence = function() return presence end
+	ns.Watch.Set("W:A B", true)
+	stubs.time = stubs.time + 30
+	presence = nil
+	ns.Watch.Check()
+	presence = true
+	ns.Watch.Check()
+	Equal(#popups, 1)
+end)
+
+Test("an alert fires even if the first roster update is the one that shows them online", function()
+	local ns = Boot()
+	local popups = LastPopup(ns)
+	ns.Store.Ensure("W:A B", { name = "A B" })
+	local presence = false
+	ns.Identity.Presence = function() return presence end
+	ns.Watch.Set("W:A B", true)
+	stubs.time = stubs.time + 30
+	presence = true
+	ns.Watch.Check()
+	Equal(#popups, 1)
+end)
+
+Test("only known contacts can be watched", function()
+	local ns = Boot()
+	ns.Identity.Presence = function() return nil end
+	Equal(ns.Watch.CanWatch("W:A B", {}), false)
+	Equal(ns.Watch.CanWatch("W:A B", { watch = true }), true)
+end)
+
+Test("marking a chat unread starts at its newest incoming message", function()
+	local ns = Boot()
+	local conv = WhisperChat(ns, 2)
+	Chat(ns, "CHAT_MSG_WHISPER_INFORM", { text = "reply", name = "A B" })
+	Equal(ns.Store.UnreadCount("W:A B", conv), 0)
+	Equal(ns.Store.MarkUnread("W:A B"), true)
+	Equal(ns.Store.UnreadCount("W:A B", conv), 1)
+	Equal(conv.readId, 1)
+	ns.Store.Ensure("W:Empty", { name = "Empty" })
+	Equal(ns.Store.MarkUnread("W:Empty"), false)
+end)
+
+Test("saved messages survive retention, the per-chat cap and the global cap", function()
+	local old = Message(1, "keep me")
+	old.b = 1
+	local messages = { old }
+	for index = 2, 6 do
+		messages[index] = Message(100000000 + index, "m" .. index)
+	end
+	local conv = Conversation(messages)
+	local ns = Boot(Database({ ["W:A B"] = conv }, { perChatCap = 3, globalCap = 2000 }))
+	ns.DB.Prune(100000100)
+	Equal(conv.m[1].x, "keep me", "age and cap")
+	Equal(#conv.m, 3)
+
+	ns.Set("globalCap", 1)
+	ns.DB.Prune(100000100)
+	Equal(conv.m[1].x, "keep me", "global cap")
+	Equal(#conv.m, 1)
+end)
+
+Test("trimming a full chat skips saved messages", function()
+	local ns = Boot()
+	ns.Set("perChatCap", 100)
+	local conv = WhisperChat(ns, 1)
+	conv.m[1].b = 1
+	WhisperChat(ns, 160)
+	Equal(conv.m[1].x, "m1")
+	Equal(conv.m[1].b, 1)
+end)
+
+Test("saving toggles and shows a marked row with its own header", function()
+	local ns = Boot()
+	local conv = WhisperChat(ns, 2)
+	Equal(ns.Store.ToggleSaved("W:A B", 2), true)
+	local elements = ns.MessageList.BuildElements(conv, 200, nil, nil, "W:A B")
+	local last = elements[#elements]
+	Equal(last.saved, true)
+	Equal(last.head, true, "a saved message always shows its time")
+	Equal(ns.Store.ToggleSaved("W:A B", 2), false)
+end)
+
+Test("a due reminder pops up once and jumps to its message", function()
+	local ns = Boot()
+	local popups = LastPopup(ns)
+	WhisperChat(ns, 1)
+	ns.Later.Remind("W:A B", 1, 60)
+	ns.Later.Tick(stubs.serverTime + 59)
+	Equal(#popups, 0)
+	ns.Later.Tick(stubs.serverTime + 60)
+	Equal(#popups, 1)
+	Equal(popups[1].record.x, "Reminder: m1")
+	Equal(popups[1].record.jump, 1)
+	ns.Later.Tick(stubs.serverTime + 90)
+	Equal(#popups, 1)
+	Equal(ns.Get("reminders"), nil)
+end)
+
+Test("reminders wait while busy and are dropped with their message", function()
+	local ns = Boot()
+	local popups = LastPopup(ns)
+	WhisperChat(ns, 1)
+	ns.Later.Remind("W:A B", 1, 0)
+	ns.Set("dnd", true)
+	ns.Later.Tick(stubs.serverTime)
+	Equal(#popups, 0)
+	Equal(#ns.Get("reminders"), 1)
+	ns.Set("dnd", false)
+	ns.Store.Delete("W:A B")
+	ns.Later.Tick(stubs.serverTime)
+	Equal(#popups, 0)
+	Equal(ns.Get("reminders"), nil)
+end)
+
+Test("several due reminders take turns in the one popup", function()
+	local ns = Boot()
+	local popups = LastPopup(ns)
+	WhisperChat(ns, 2)
+	ns.Later.Remind("W:A B", 1, 0)
+	ns.Later.Remind("W:A B", 2, 0)
+	ns.Later.Tick(stubs.serverTime)
+	Equal(#popups, 1)
+	ns.Later.Tick(stubs.serverTime)
+	Equal(#popups, 2)
+end)
+
+Test("the contact card sums up what is known", function()
+	local ns = Boot()
+	local conv = WhisperChat(ns, 2)
+	Chat(ns, "CHAT_MSG_WHISPER_INFORM", { text = "reply", name = "A B" })
+	conv.m[1].b = 1
+	conv.nick = "Buddy"
+	conv.note = "tank"
+	local info = ns.ContactCard.Info("W:A B", conv, "afk", stubs.serverTime)
+	Equal(info.title, "Buddy")
+	Equal(info.subtitle, "A B")
+	local facts = {}
+	for _, fact in ipairs(info.facts) do facts[fact.label] = fact.value end
+	Equal(facts.Status, "AFK")
+	Equal(facts.Note, "tank")
+	Equal(facts.Messages, "3, of which 1 from you")
+	Equal(facts["Saved messages"], "1")
+end)
+
+Test("the contact card opens on an empty chat without an error", function()
+	local ns = Boot()
+	ns.Store.Ensure("W:A B", { name = "A B" })
+	local info = ns.ContactCard.Info("W:A B", ns.Store.Get("W:A B"), nil, 0)
+	Equal(info.title, "A B")
+	Equal(info.subtitle, nil)
+end)
+
+local function SetGroup(...)
+	stubs.group = { player = { name = "Me", surname = "Self", class = "SHAMAN" } }
+	for index, name in ipairs({ ... }) do
+		stubs.group["party" .. index] = { name = name, surname = "X", class = "SHAMAN" }
+	end
+end
+
+Test("a different group gets a line in the party history", function()
+	local ns = Boot()
+	SetGroup("Ana", "Ben")
+	Chat(ns, "CHAT_MSG_PARTY", { text = "hi", name = "Ana X" })
+	Equal(ElementKinds(ns, "P:party"), "notice,message")
+	local first = ns.MessageList.BuildElements(ns.Store.Get("P:party"), 200, nil, nil, "P:party")
+	assert(first[2].label:find("Ana, Ben", 1, true), first[2].label)
+
+	stubs.serverTime = stubs.serverTime + 60
+	Chat(ns, "CHAT_MSG_PARTY", { text = "still us", name = "Ben X" })
+	Equal(#ns.Store.Get("P:party").groups, 1)
+
+	SetGroup("Cid", "Dee")
+	stubs.serverTime = stubs.serverTime + 60
+	Chat(ns, "CHAT_MSG_PARTY", { text = "new people", name = "Cid X" })
+	Equal(ElementKinds(ns, "P:party"), "notice,message,message,notice,message")
+end)
+
+Test("group rules: replacements are the same group, long pauses are not", function()
+	local ns = Load()
+	local previous = { m = { "A", "B", "C", "D" }, last = 1000 }
+	Equal(ns.GroupSessions.IsNew(nil, { "A" }, 1000), true)
+	Equal(ns.GroupSessions.IsNew(previous, { "A", "B", "C", "E" }, 1100), false)
+	Equal(ns.GroupSessions.IsNew(previous, { "A", "F", "G", "H" }, 1100), true)
+	Equal(ns.GroupSessions.IsNew(previous, { "A", "B", "C", "D" }, 1000 + 3 * 3600 + 1), true)
+end)
+
+Test("group labels shorten names and name the instance", function()
+	local ns = Load()
+	Equal(ns.GroupSessions.Label({ m = { "Ana X", "Ben Y" } }), "New group: Ana, Ben")
+	Equal(ns.GroupSessions.Label({ m = { "A", "B", "C", "D", "E", "F", "G" } }), "New group: A, B, C, D, E, +2")
+	Equal(ns.GroupSessions.Label({ m = { "Ana X" }, z = "Deadmines" }), "New group in Deadmines: Ana")
+end)
+
+Test("being alone in a group adds no line", function()
+	local ns = Boot()
+	Chat(ns, "CHAT_MSG_PARTY", { text = "hi", name = "Ana X" })
+	Equal(ns.Store.Get("P:party").groups, nil)
+end)
+
+Test("old group lines are pruned with their chat's retention", function()
+	local conv = Conversation({ Message(100000000) })
+	conv.groups = { { t = 1, last = 1, m = { "A" } } }
+	local ns = Boot(Database({ ["P:party"] = conv }))
+	ns.DB.Prune(100000100)
+	Equal(conv.groups, nil)
+end)
+
+Test("say and emotes collect in a session-only nearby chat", function()
+	local ns = Boot()
+	Chat(ns, "CHAT_MSG_SAY", { text = "hello", name = "Ana X" })
+	Chat(ns, "CHAT_MSG_YELL", { text = "HEY", name = "Ben Y" })
+	Chat(ns, "CHAT_MSG_TEXT_EMOTE", { text = "Ana waves.", name = "Ana X" })
+	Equal(ns.db.conv["N:nearby"], nil, "never saved")
+	local conv = ns.Store.Get("N:nearby")
+	Equal(#conv.m, 3)
+	Equal(conv.unread, nil, "no unread counts")
+	Equal(ns.Store.TotalUnread(), 0)
+end)
+
+Test("nearby chat uses the channel filters and can be turned off", function()
+	local ns = Boot()
+	ns.Filter.BlockPlayer("Ana X")
+	Chat(ns, "CHAT_MSG_SAY", { text = "spam", name = "Ana X" })
+	Equal(ns.Store.Get("N:nearby"), nil)
+	ns.Set("showNearby", false)
+	Chat(ns, "CHAT_MSG_SAY", { text = "hello", name = "Ben Y" })
+	Equal(ns.Store.Get("N:nearby"), nil)
+end)
+
+Test("nearby chat is read-only", function()
+	local ns = Boot()
+	Chat(ns, "CHAT_MSG_SAY", { text = "hello", name = "Ana X" })
+	local ok, reason = ns.Send.Text("N:nearby", "hi")
+	Equal(ok, false)
+	Equal(reason, "unavailable")
+end)
+
+Test("nearby chat is listed with the channels", function()
+	local ns = Boot()
+	Chat(ns, "CHAT_MSG_SAY", { text = "hello", name = "Ana X" })
+	local found
+	for _, group in ipairs(ns.Sidebar.Groups(ns.Store.List())) do
+		for _, entry in ipairs(group.entries) do
+			if entry.key == "N:nearby" then found = group.label end
+		end
+	end
+	Equal(found, "CHANNELS")
+end)
+
+Test("search understands has:link, is:saved, before: and after:", function()
+	local ns = Load()
+	local parsed = ns.Search.ParseQuery("has:link is:saved before:1970-01-05 after:02.01.1970 hello")
+	Equal(parsed.needle, "hello")
+	Equal(parsed.hasLink, true)
+	Equal(parsed.saved, true)
+	Equal(parsed.before, 86400 * 4)
+	Equal(parsed.after, 86400)
+	Equal(ns.Search.ParseQuery("has:gold").needle, "has:gold", "unknown filters stay searchable")
+	Equal(ns.Search.ParseQuery("before:someday").needle, "before:someday")
+end)
+
+Test("search filters messages by link, saved state and date", function()
+	local ns = Boot()
+	local linked = Message(86400 * 3, "see https://x.org")
+	linked.i = 1
+	local saved = Message(86400 * 10, "keep")
+	saved.i, saved.b = 2, 1
+	local list = { { key = "W:A B", conv = Conversation({ linked, saved }, { name = "A B" }) } }
+	local function count(query)
+		local state = ns.Search.NewState(query, list, nil, "all")
+		ns.Search.Advance(state, function() return false end)
+		return #state.results
+	end
+	Equal(count("has:link"), 1)
+	Equal(count("is:saved"), 1)
+	Equal(count("before:1970-01-05"), 1)
+	Equal(count("after:1970-01-05"), 1)
+	Equal(count("after:1970-01-20"), 0)
+end)
+
+Test("dates parse in both formats and reject nonsense", function()
+	local ns = Load()
+	Equal(ns.Util.ParseDate("1970-01-03"), 86400 * 2)
+	Equal(ns.Util.ParseDate("3.1.1970"), 86400 * 2)
+	Equal(ns.Util.ParseDate("1970-13-03"), nil)
+	Equal(ns.Util.ParseDate("yesterday"), nil)
+end)
+
 local failures = 0
 for _, test in ipairs(tests) do
 	local ok, err = xpcall(test.fn, debug.traceback)

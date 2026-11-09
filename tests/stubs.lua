@@ -181,6 +181,11 @@ function stubs.Install()
 		if format == "%Y-%m-%d %H:%M" then
 			return "day" .. math.floor((time or 0) / SECONDS_PER_DAY) .. " 12:00"
 		end
+		if format == "*t" then
+			local seconds = time or 0
+			return { year = 1970, month = 1, day = math.floor(seconds / SECONDS_PER_DAY) + 1,
+				hour = math.floor(seconds % SECONDS_PER_DAY / 3600), min = 0, sec = 0 }
+		end
 		if format == "%m" then return "11" end
 		if format == "%d" then return "08" end
 		if format == "%Y" then
@@ -188,6 +193,10 @@ function stubs.Install()
 		end
 		return "12:00"
 	end
+	_G.time = function(parts)
+		return (parts.day - 1) * SECONDS_PER_DAY + parts.hour * 3600 + parts.min * 60 + parts.sec
+	end
+	_G.GetInstanceInfo = function() return stubs.instanceName end
 	_G.C_AddOns = { GetAddOnMetadata = function() return "test" end }
 	_G.C_ChatInfo = {
 		InChatMessagingLockdown = function() return stubs.lockdown end,

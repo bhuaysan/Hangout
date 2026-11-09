@@ -96,6 +96,7 @@ local function ShowStatusMenu(owner)
 		end
 		root:CreateDivider()
 		root:CreateButton(L["Mark all as read"], function() ns.Launcher.MarkAllRead() end)
+		root:CreateButton(L["Saved messages"], function() ns.Window.ShowSearch("is:saved") end)
 	end)
 end
 

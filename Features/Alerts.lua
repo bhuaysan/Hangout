@@ -115,12 +115,14 @@ end
 function Alerts.Decide(key, conv, mention)
 	if conv.req then return nil end
 	if conv.mute and not mention then return nil end
-	if ns.Get("dnd") then return nil end
 	-- Automatic quiet mode is silent like Do Not Disturb, badges still count.
-	if ns.Quiet.IsActive() then return nil end
+	-- Contacts marked as important get through both.
+	if not conv.vip and (ns.Get("dnd") or ns.Quiet.IsActive()) then return nil end
 	if key == ns.activeKey then return nil end
+	if conv.notify == "mentions" and not mention then return nil end
 
-	local category = CategoryName(key, mention)
+	local alertsAll = conv.notify == "all"
+	local category = CategoryName(key, mention) or (alertsAll and "Group") or nil
 	if not category then return nil end
 
 	-- A whisper hidden from normal chat doesn't play the game's sound either.
@@ -128,11 +130,12 @@ function Alerts.Decide(key, conv, mention)
 	if sound == "default" and ns.Get("hideWhispers") then
 		sound = "whisper"
 	end
+	if alertsAll and sound == "off" then sound = "ping" end
 
 	return {
 		sound = sound,
-		toast = ns.Get("toast" .. category) and not InCombatLockdown(),
-		flash = ns.Get("flash" .. category),
+		toast = (alertsAll or ns.Get("toast" .. category)) and not InCombatLockdown(),
+		flash = alertsAll or ns.Get("flash" .. category),
 		isWhisper = category == "Whisper",
 	}
 end
@@ -163,6 +166,12 @@ local function PlayThrottled(choice)
 	if now - lastSoundAt < MIN_SOUND_INTERVAL then return end
 	lastSoundAt = now
 	PlayChoice(choice)
+end
+
+-- A popup and a ping for something that isn't a message: reminders, online alerts.
+function Alerts.ShowNotice(key, conv, record)
+	PlayThrottled("ping")
+	ns.Toast.Show(key, conv, record)
 end
 
 -- Plays whatever this message should do. A popup needs a readable record.

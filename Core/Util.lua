@@ -26,6 +26,24 @@ function Util.LongDate(timestamp, withYear)
 	return FillDate(withYear and L["{month} {day}, {year}"] or L["{month} {day}"], timestamp, MONTHS_LONG)
 end
 
+-- The local midnight that ends the day of the given time.
+function Util.NextMidnight(now)
+	local parts = date("*t", now)
+	parts.day, parts.hour, parts.min, parts.sec = parts.day + 1, 0, 0, 0
+	return time(parts)
+end
+
+-- Local midnight of "2026-11-09" or "9.11.2026", or nil for anything else.
+function Util.ParseDate(text)
+	local year, month, day = text:match("^(%d%d%d%d)%-(%d%d?)%-(%d%d?)$")
+	if not year then
+		day, month, year = text:match("^(%d%d?)%.(%d%d?)%.(%d%d%d%d)$")
+	end
+	month, day = tonumber(month), tonumber(day)
+	if not month or month < 1 or month > 12 or day < 1 or day > 31 then return nil end
+	return time({ year = tonumber(year), month = month, day = day, hour = 0, min = 0, sec = 0 })
+end
+
 -- Lua only changes the case of ASCII, so names and words with umlauts need
 -- the two-byte Latin letters folded by hand. The byte length stays the same.
 local UPPER_RANGE, LOWER_RANGE = "\195([\128-\158])", "\195([\160-\190])"

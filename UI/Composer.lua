@@ -272,7 +272,20 @@ local function OnEnterPressed(self)
 	end
 	local text = self:GetText()
 	local key = ns.selectedKey
+	if text:sub(1, 1) == "/" and ns.Commands.Run(key, ns.Util.Trim(text)) then
+		self:SetText("")
+		return
+	end
+	-- The empty box's Enter is the key press that waiting messages need.
+	if ns.Util.Trim(text) == "" and ns.Outbox.IsReady() then
+		ns.Outbox.SendAll()
+		return
+	end
+
 	local ok, reason = ns.Send.Text(key, text, replies[key])
+	if reason == "restricted" then
+		ok, reason = ns.Outbox.Add(key, text, replies[key])
+	end
 	if ok then
 		ClearReply(key)
 		ns.History.Push(text)
@@ -378,9 +391,13 @@ local function UpdateHint()
 	if not ns.selectedKey then
 		placeholder:SetText(L["Pick a chat to start typing."])
 	elseif ns.Lockdown.IsActive() then
-		placeholder:SetText(L["Restricted right now. Use normal chat to reply."])
+		placeholder:SetText(L["Restricted right now. Press Enter to send it later."])
+	elseif ns.Outbox.IsReady() then
+		placeholder:SetText(L["Press Enter to send %d waiting messages."]:format(ns.Outbox.Count()))
 	elseif ns.selectedKey == ns.Capture.LOCKED_KEY then
 		placeholder:SetText(L["Use normal chat to reply to these messages."])
+	elseif ns.CategoryOf(ns.selectedKey) == "nearby" then
+		placeholder:SetText(L["This chat is read-only."])
 	else
 		local conv = ns.Store.Get(ns.selectedKey)
 		placeholder:SetText(conv and L["Message %s"]:format(ns.Store.LabelFor(ns.selectedKey, conv)) or L["Message..."])
@@ -412,6 +429,7 @@ ns.On("THEME_CHANGED", function()
 end)
 
 ns.On("LOCKDOWN_CHANGED", UpdateHint)
+ns.On("OUTBOX_CHANGED", UpdateHint)
 
 ns.On("SELECTION_CHANGED", function(key)
 	replies = {}

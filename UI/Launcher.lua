@@ -289,6 +289,8 @@ SlashCmdList.HANGOUT = function(input)
 		PrintConversation(tonumber(argument) or 0)
 	elseif command == "read" then
 		Launcher.MarkAllRead()
+	elseif command == "test" then
+		ns.TestMode.Run(argument)
 	elseif command == "combat" then
 		SetCombatMode(argument)
 	else

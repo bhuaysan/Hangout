@@ -33,7 +33,7 @@ local MIN_SEARCH_LENGTH = 2
 local SECTIONS = {
 	{ label = L["WHISPERS"], prefixes = "WBL" },
 	{ label = L["GROUP"], prefixes = "GOPRI" },
-	{ label = L["CHANNELS"], prefixes = "C" },
+	{ label = L["CHANNELS"], prefixes = "CN" },
 }
 
 local scrollBox, scrollBar, searchHolder, searchBox, searchPlaceholder, newChatButton
@@ -147,13 +147,13 @@ local function ExtentOf(_, element)
 	return element.kind == "result" and RESULT_ROW_HEIGHT or ROW_HEIGHT
 end
 
-local function AskNickname(key, conv)
+function Sidebar.AskNickname(key, conv)
 	ns.Prompt.AskText(L["Nickname for %s"]:format(ns.Util.DisplayName(conv.name or key)), conv.nick, function(text)
 		ns.Store.SetField(key, "nick", ns.Util.Trim(text))
 	end)
 end
 
-local function AskNote(key, conv)
+function Sidebar.AskNote(key, conv)
 	ns.Prompt.AskText(L["Note for %s"]:format(ns.Store.LabelFor(key, conv)), conv.note, function(text)
 		ns.Store.SetField(key, "note", ns.Util.Trim(text))
 	end)
@@ -182,6 +182,45 @@ local function AddPersistentItems(root, key, conv)
 	end)
 end
 
+local NOTIFY_LEVELS = {
+	{ label = L["Default"] },
+	{ value = "all", label = L["All messages"] },
+	{ value = "mentions", label = L["Mentions only"] },
+}
+
+local ONE_HOUR = 3600
+
+local function AddNotificationMenu(root, key, conv)
+	local menu = root:CreateButton(L["Notifications"])
+	for _, level in ipairs(NOTIFY_LEVELS) do
+		menu:CreateRadio(level.label,
+			function() return conv.notify == level.value end,
+			function() ns.Store.SetField(key, "notify", level.value) end)
+	end
+	menu:CreateDivider()
+	menu:CreateButton(L["Mute for 1 hour"], function() ns.Store.MuteFor(key, ONE_HOUR) end)
+	menu:CreateButton(L["Mute until tomorrow"], function()
+		local now = GetServerTime()
+		ns.Store.MuteFor(key, ns.Util.NextMidnight(now) - now)
+	end)
+	if ns.Store.IsPersonal(key) then
+		menu:CreateDivider()
+		menu:CreateCheckbox(L["Important: ignores Do Not Disturb"],
+			function() return conv.vip == true end,
+			function() ns.Store.SetField(key, "vip", not conv.vip or nil) end)
+	end
+end
+
+local function AddWatchItem(root, key, conv)
+	if ns.Watch.CanWatch(key, conv) then
+		root:CreateCheckbox(L["Online alert"],
+			function() return conv.watch == true end,
+			function() ns.Watch.Set(key, not conv.watch) end)
+	else
+		root:CreateButton(L["Online alert (friends and guild only)"]):SetEnabled(false)
+	end
+end
+
 local function AddChannelItem(root, key)
 	local saved = ns.Store.IsPersistent(key)
 	root:CreateButton(saved and L["Stop saving history"] or L["Save history"], function()
@@ -201,15 +240,19 @@ local function ShowRowMenu(owner, key)
 		end
 		if persistent then
 			AddPersistentItems(root, key, conv)
+			AddNotificationMenu(root, key, conv)
 		end
 		if prefix == "W" or prefix == "B" then
-			root:CreateButton(L["Set nickname"], function() AskNickname(key, conv) end)
-			root:CreateButton(L["Edit note"], function() AskNote(key, conv) end)
+			root:CreateButton(L["Contact card"], function() ns.ContactCard.Show(key) end)
+			root:CreateButton(L["Set nickname"], function() Sidebar.AskNickname(key, conv) end)
+			root:CreateButton(L["Edit note"], function() Sidebar.AskNote(key, conv) end)
+			if persistent then AddWatchItem(root, key, conv) end
 		end
 		if ns.CategoryOf(key) == "channel" then
 			AddChannelItem(root, key)
 		end
 		root:CreateButton(L["Mark as read"], function() ns.Store.MarkRead(key) end)
+		root:CreateButton(L["Mark as unread"], function() ns.Store.MarkUnread(key) end)
 		root:CreateButton(L["Copy conversation"], function()
 			ns.CopyBox.Show(L["Conversation with %s"]:format(ns.Store.LabelFor(key, conv)), ns.MessageList.ConversationText(key, conv))
 		end)
@@ -569,6 +612,10 @@ function Sidebar.SetCollapsed(isCollapsed)
 	UpdateScopeBar()
 	ns.ProfileBar.SetCollapsed(collapsed)
 	Sidebar.Refresh()
+end
+
+function Sidebar.SetSearch(query)
+	if searchBox then searchBox:SetText(query) end
 end
 
 function Sidebar.HasSearchFocus()

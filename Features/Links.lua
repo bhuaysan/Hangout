@@ -81,6 +81,10 @@ function Links.Decorate(text, colorHex)
 	return table.concat(output)
 end
 
+function Links.HasUrl(text)
+	return Links.Decorate(text, "000000") ~= text
+end
+
 -- The address behind one of these links, or nil for any other link.
 function Links.UrlFrom(link)
 	return link:match("^" .. LINK_TYPE .. ":(.+)$")

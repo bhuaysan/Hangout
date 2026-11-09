@@ -203,7 +203,7 @@ function Widgets.ShowChatAvatar(avatar, info)
 	if hasSlot and isPerson then
 		avatar.letter:SetText(ns.Util.FirstCharacter(info.label))
 	elseif hasSlot then
-		Widgets.SetIcon(avatar.icon, prefix == "C" and "hash" or "guild")
+		Widgets.SetIcon(avatar.icon, (prefix == "C" or prefix == "N") and "hash" or "guild")
 	end
 
 	local hasStatus = info ~= nil and info.status ~= nil

@@ -28,9 +28,16 @@ Features\Search.lua
 Features\History.lua
 Features\Complete.lua
 Features\Protocol.lua
+Features\Outbox.lua
+Features\Later.lua
+Features\Watch.lua
+Features\GroupSessions.lua
+Features\Commands.lua
+Features\TestMode.lua
 UI\Theme.lua
 UI\Widgets.lua
 UI\Prompt.lua
+UI\ContactCard.lua
 UI\PlayerMenu.lua
 UI\CopyBox.lua
 UI\MessageList.lua

@@ -35,6 +35,7 @@ local QUOTE_TEXT_CHARS = 80
 local FAILED_TEXT_CHARS = 80
 local RETRY_PADDING = 12
 local RETRY_HEIGHT = 20
+local THIRTY_MINUTES = 1800
 local QUOTE_MIN_BUBBLE_WIDTH = 160
 local REPLY_BUTTON_WIDTH = 62
 
@@ -127,17 +128,44 @@ function MessageList.ConversationText(_, conv)
 	return table.concat(lines, "\n")
 end
 
+local ACTION_LABELS = {
+	failed = L["Not delivered: %s"],
+	queued = L["Waiting: %s"],
+}
+
 local function NoticeElement(notice, key)
-	if notice.kind == "failed" then
+	local template = ACTION_LABELS[notice.kind]
+	if template then
 		return {
-			kind = "failed",
+			kind = notice.kind,
 			key = key,
 			notice = notice,
-			label = L["Not delivered: %s"]:format(
-				ns.Util.Truncate(ns.Search.VisibleText(notice.text), FAILED_TEXT_CHARS)),
+			label = template:format(ns.Util.Truncate(ns.Search.VisibleText(notice.text), FAILED_TEXT_CHARS)),
 		}
 	end
 	return { kind = "notice", label = notice.text }
+end
+
+-- Everything that sits between the messages, oldest first: this session's
+-- notices, and the saved lines that mark a new group.
+local function Timeline(conv, key)
+	local notices = key and ns.Store.GetNotices(key) or {}
+	local sessions = conv.groups
+	if not sessions then return notices end
+
+	local merged = {}
+	local noticeAt, sessionAt = 1, 1
+	while notices[noticeAt] or sessions[sessionAt] do
+		local session = sessions[sessionAt]
+		if session and (not notices[noticeAt] or session.t <= notices[noticeAt].t) then
+			merged[#merged + 1] = { t = session.t, kind = "group", text = ns.GroupSessions.Label(session) }
+			sessionAt = sessionAt + 1
+		else
+			merged[#merged + 1] = notices[noticeAt]
+			noticeAt = noticeAt + 1
+		end
+	end
+	return merged
 end
 
 -- Turns stored messages into list rows: day separators, and messages that
@@ -159,7 +187,7 @@ function MessageList.BuildElements(conv, limit, live, unreadAfterId, key)
 
 	-- Notices live beside the messages and are slotted in by time. A notice from
 	-- the same second as a message reacts to it, so it goes after that message.
-	local notices = key and ns.Store.GetNotices(key) or {}
+	local notices = Timeline(conv, key)
 	local nextNotice = 1
 	if first > 1 then
 		while notices[nextNotice] and notices[nextNotice].t < messages[first].t do
@@ -209,6 +237,7 @@ function MessageList.BuildElements(conv, limit, live, unreadAfterId, key)
 			class = ClassOf(message, conv),
 			mention = message.s ~= nil and message.o ~= 1 and ns.Alerts.IsMention(message.x),
 			reactions = ns.Protocol.ReactionList(message.r),
+			saved = message.b == 1,
 			time = date("%H:%M", message.t),
 			display = ns.Links.Display(message.x),
 			quote = quoted and {
@@ -218,7 +247,8 @@ function MessageList.BuildElements(conv, limit, live, unreadAfterId, key)
 			} or nil,
 			head = previous == nil
 				or sender ~= previousSender
-				or message.t - previous.t > GROUP_WINDOW_SECONDS,
+				or message.t - previous.t > GROUP_WINDOW_SECONDS
+				or message.b == 1,
 		}
 		if message.o == 1 and conv.seenId and message.i <= conv.seenId then
 			seenPosition = #elements
@@ -382,11 +412,23 @@ local function AddReactionsUnavailable(root)
 	root:CreateButton(reason):SetEnabled(false)
 end
 
+local function AddLaterItems(root, key, element)
+	root:CreateButton(element.saved and L["Remove from saved"] or L["Save message"], function()
+		ns.Store.ToggleSaved(key, element.id)
+	end)
+	root:CreateButton(L["Remind me in 30 minutes"], function()
+		ns.Later.Remind(key, element.id, THIRTY_MINUTES)
+		ns.Print(L["I'll remind you in 30 minutes."])
+	end)
+	root:CreateDivider()
+end
+
 local function ShowMessageMenu(owner, element)
 	local key = ns.selectedKey
 	MenuUtil.CreateContextMenu(owner, function(_, root)
 		root:CreateButton(L["Reply"], function() ns.Composer.SetReply(key, element.id) end)
 		root:CreateDivider()
+		if ns.Store.IsPersistent(key) then AddLaterItems(root, key, element) end
 		if ns.Protocol.CanReact(key) then
 			AddReactionItems(root, element.id)
 			root:CreateDivider()
@@ -593,13 +635,25 @@ local function BuildRow(frame)
 	frame.label:SetWordWrap(false)
 
 	-- The game can't open a browser, and a failed whisper needs a key press or click to resend.
-	local retryLabel
-	frame.retry, retryLabel = ns.Widgets.TextButton(frame, L["Send again"], "HangoutFontSmall")
-	frame.retry:SetSize(retryLabel:GetStringWidth() + RETRY_PADDING, RETRY_HEIGHT)
-	frame.retry:SetPoint("RIGHT", -SIDE_PADDING, 0)
+	frame.retry, frame.retryLabel = ns.Widgets.TextButton(frame, L["Send again"], "HangoutFontSmall")
+	frame.retry:SetHeight(RETRY_HEIGHT)
 	frame.retry:SetScript("OnClick", function(self)
 		local element = self:GetParent().element
-		if element and element.notice then ns.Send.Retry(element.key, element.notice) end
+		if not element or not element.notice then return end
+		if element.kind == "queued" then
+			ns.Outbox.SendNotice(element.notice)
+		else
+			ns.Send.Retry(element.key, element.notice)
+		end
+	end)
+
+	local discardLabel
+	frame.discard, discardLabel = ns.Widgets.TextButton(frame, L["Discard"], "HangoutFontSmall")
+	frame.discard:SetSize(discardLabel:GetStringWidth() + RETRY_PADDING, RETRY_HEIGHT)
+	frame.discard:SetPoint("RIGHT", -SIDE_PADDING, 0)
+	frame.discard:SetScript("OnClick", function(self)
+		local element = self:GetParent().element
+		if element and element.notice then ns.Outbox.Discard(element.notice) end
 	end)
 
 	frame.highlight = ns.Widgets.Fill(frame, "selected")
@@ -649,6 +703,10 @@ local function BuildRow(frame)
 	frame:SetScript("OnLeave", OnRowLeave)
 end
 
+local function TimeLabel(element)
+	return element.saved and (ns.Emoji.Tag("star") .. " " .. element.time) or element.time
+end
+
 -- A full-width row: crest and name on the left, with the text under the name.
 local function LayoutPlainMessage(frame, element)
 	local top = element.head and -HEADER_HEIGHT or 0
@@ -675,7 +733,7 @@ local function LayoutPlainMessage(frame, element)
 	if element.head then
 		frame.sender:SetText(element.sender)
 		frame.sender:SetTextColor(ns.Theme.ClassColor(element.class))
-		frame.time:SetText(element.time)
+		frame.time:SetText(TimeLabel(element))
 	end
 end
 
@@ -731,7 +789,7 @@ local function LayoutBubble(frame, element)
 		frame.time:SetPoint("BOTTOMLEFT", frame.bubble, "BOTTOMRIGHT", BUBBLE_TIME_GAP, 2)
 	end
 	-- A message sent from another character still says which one.
-	local timeText = outgoing and element.sender ~= L["You"] and (element.sender .. "  " .. element.time) or element.time
+	local timeText = outgoing and element.sender ~= L["You"] and (element.sender .. "  " .. TimeLabel(element)) or TimeLabel(element)
 	frame.time:SetText(element.gm and (L["GM"] .. "  " .. timeText) or timeText)
 end
 
@@ -794,7 +852,11 @@ local function InitRow(frame, element)
 	local isMessage = element.kind == "message"
 	local isOpener = element.kind == "opener"
 	local isFailed = element.kind == "failed"
-	frame.retry:SetShown(isFailed and not ns.Window.IsFaded())
+	local isQueued = element.kind == "queued"
+	local isAction = isFailed or isQueued
+	local canSend = isFailed or (isQueued and not ns.Lockdown.IsActive())
+	frame.retry:SetShown(canSend and not ns.Window.IsFaded())
+	frame.discard:SetShown(isQueued and not ns.Window.IsFaded())
 	ns.Widgets.ShowChatAvatar(frame.openerAvatar, isOpener and element or nil)
 	frame.openerTitle:SetShown(isOpener)
 	frame.openerText:SetShown(isOpener)
@@ -832,12 +894,20 @@ local function InitRow(frame, element)
 	if not isMessage then
 		LayoutPills(frame, element)
 		frame.label:ClearAllPoints()
-		frame.label:SetJustifyH(isFailed and "RIGHT" or "CENTER")
+		frame.label:SetJustifyH(isAction and "RIGHT" or "CENTER")
 		if element.kind == "seen" and IsWhisper(ns.selectedKey) then
 			frame.label:SetPoint("RIGHT", -SIDE_PADDING, 0)
-		elseif isFailed then
+		elseif isAction then
+			frame.retryLabel:SetText(isQueued and L["Send"] or L["Send again"])
+			frame.retry:SetWidth(frame.retryLabel:GetStringWidth() + RETRY_PADDING)
+			frame.retry:ClearAllPoints()
+			if isQueued then
+				frame.retry:SetPoint("RIGHT", frame.discard, "LEFT", -2, 0)
+			else
+				frame.retry:SetPoint("RIGHT", -SIDE_PADDING, 0)
+			end
 			frame.label:SetPoint("LEFT", SIDE_PADDING, 0)
-			frame.label:SetPoint("RIGHT", frame.retry, "LEFT", -4, 0)
+			frame.label:SetPoint("RIGHT", canSend and frame.retry or frame.discard, "LEFT", -4, 0)
 		elseif element.kind == "notice" then
 			frame.label:SetPoint("LEFT", SIDE_PADDING, 0)
 			frame.label:SetPoint("RIGHT", -SIDE_PADDING, 0)
@@ -845,7 +915,7 @@ local function InitRow(frame, element)
 			frame.label:SetPoint("CENTER")
 		end
 		frame.label:SetText(element.label)
-		frame.label:SetTextColor(ns.Theme.Color((element.kind == "unread" or isFailed) and "accent" or "muted"))
+		frame.label:SetTextColor(ns.Theme.Color((element.kind == "unread" or isAction) and "accent" or "muted"))
 		return
 	end
 
@@ -1096,3 +1166,4 @@ ns.On("LOCKED_ADDED", RefreshIfCurrent)
 ns.On("MESSAGES_CHANGED", RefreshIfCurrent)
 ns.On("LIVE_CHANGED", function() MessageList.Refresh() end)
 ns.On("THEME_CHANGED", function() MessageList.Refresh() end)
+ns.On("OUTBOX_CHANGED", function() MessageList.Refresh() end)
