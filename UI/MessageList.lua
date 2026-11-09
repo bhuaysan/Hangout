@@ -28,6 +28,11 @@ local OPENER_AVATAR_SIZE = 46
 local QUICK_BAR = { "thumbsup", "heart", "joy" }
 local FALLBACK_LINE_HEIGHT = 15
 local CONTEXT_ROWS = 20
+local QUOTE_HEIGHT = 18
+local QUOTE_BAR_WIDTH = 2
+local QUOTE_TEXT_CHARS = 80
+local QUOTE_MIN_BUBBLE_WIDTH = 160
+local REPLY_BUTTON_WIDTH = 44
 
 local BUBBLE_PAD_X = 10
 local BUBBLE_PAD_Y = 6
@@ -72,6 +77,9 @@ local function SenderOf(message, conv)
 	if message.s then return ns.Store.SenderLabel(message.s) end
 	return conv.nick or ns.Util.DisplayName(conv.name or "?")
 end
+
+-- The reply bar in the composer names the author the same way a row does.
+MessageList.SenderOf = SenderOf
 
 local function ClassOf(message, conv)
 	if message.o == 1 then
@@ -147,6 +155,7 @@ function MessageList.BuildElements(conv, limit, live, unreadAfterId, key)
 		end
 
 		local sender = SenderOf(message, conv)
+		local quoted = message.q and ns.Store.FindMessage(conv, message.q)
 		elements[#elements + 1] = {
 			kind = "message",
 			id = message.i,
@@ -160,6 +169,11 @@ function MessageList.BuildElements(conv, limit, live, unreadAfterId, key)
 			reactions = ns.Protocol.ReactionList(message.r),
 			time = date("%H:%M", message.t),
 			display = ns.Emoji.Display(message.x),
+			quote = quoted and {
+				sender = SenderOf(quoted, conv),
+				text = ns.Util.Truncate(ns.Search.VisibleText(quoted.x), QUOTE_TEXT_CHARS),
+				id = quoted.i,
+			} or nil,
 			head = previous == nil
 				or sender ~= previousSender
 				or message.t - previous.t > GROUP_WINDOW_SECONDS,
@@ -243,6 +257,7 @@ local function ExtentOf(_, element)
 	if IsBubble(element) then
 		return BubbleTop(element) + BodyHeight(element, BubbleTextWidth()) + BUBBLE_PAD_Y * 2 + BUBBLE_BOTTOM
 			+ (element.reactions and BUBBLE_REACTION_HEIGHT or 0)
+			+ (element.quote and QUOTE_HEIGHT or 0)
 	end
 	if element.kind == "opener" then
 		return OPENER_HEIGHT
@@ -256,6 +271,7 @@ local function ExtentOf(_, element)
 	local width = scrollBox:GetWidth() - TEXT_LEFT - SIDE_PADDING
 	return (element.head and HEADER_HEIGHT or 0) + BodyHeight(element, width) + ROW_GAP
 		+ (element.reactions and REACTION_ROW_HEIGHT or 0)
+		+ (element.quote and QUOTE_HEIGHT or 0)
 end
 
 local function CopyConversation(key)
@@ -373,6 +389,8 @@ end
 local function ShowMessageMenu(owner, element)
 	local key = ns.selectedKey
 	MenuUtil.CreateContextMenu(owner, function(_, root)
+		root:CreateButton("Reply", function() ns.Composer.SetReply(key, element.id) end)
+		root:CreateDivider()
 		if ns.Protocol.CanReact(key) then
 			AddReactionItems(root, element.id)
 			root:CreateDivider()
@@ -405,7 +423,13 @@ end
 
 -- Sits on the outer top corner of a bubble, or at the end of a full-width row.
 local function ShowToolbar(row, element)
-	if not ns.Protocol.CanReact(ns.selectedKey) then return end
+	-- Every chat can be replied to, but reactions need a Hangout user.
+	local canReact = ns.Protocol.CanReact(ns.selectedKey)
+	for _, button in ipairs(toolbar.reactionButtons) do
+		button:SetShown(canReact)
+	end
+	toolbar:SetWidth(TOOLBAR_PADDING * 2 + REPLY_BUTTON_WIDTH
+		+ (canReact and (#QUICK_BAR + 1) * TOOLBAR_BUTTON_SIZE or 0))
 	toolbar:ClearAllPoints()
 	if not IsBubble(element) then
 		toolbar:SetPoint("TOPRIGHT", row, "TOPRIGHT", -SIDE_PADDING, TOOLBAR_RAISE)
@@ -422,7 +446,8 @@ end
 local function CreateQuickButton(emoji, index)
 	local button = CreateFrame("Button", nil, toolbar)
 	button:SetSize(TOOLBAR_BUTTON_SIZE, TOOLBAR_BUTTON_SIZE)
-	button:SetPoint("LEFT", TOOLBAR_PADDING + (index - 1) * TOOLBAR_BUTTON_SIZE, 0)
+	button:SetPoint("LEFT", TOOLBAR_PADDING + REPLY_BUTTON_WIDTH + (index - 1) * TOOLBAR_BUTTON_SIZE, 0)
+	toolbar.reactionButtons[#toolbar.reactionButtons + 1] = button
 
 	local hover = ns.Widgets.RoundedFill(button, "hover", "ARTWORK")
 	hover:SetAllPoints()
@@ -452,8 +477,8 @@ end
 -- One shared bar that follows the mouse from message to message.
 local function CreateToolbar(parent)
 	toolbar = CreateFrame("Frame", nil, parent)
-	local buttons = #QUICK_BAR + 1
-	toolbar:SetSize(TOOLBAR_PADDING * 2 + buttons * TOOLBAR_BUTTON_SIZE, TOOLBAR_PADDING * 2 + TOOLBAR_BUTTON_SIZE)
+	toolbar.reactionButtons = {}
+	toolbar:SetHeight(TOOLBAR_PADDING * 2 + TOOLBAR_BUTTON_SIZE)
 	toolbar:SetFrameLevel(toolbar:GetFrameLevel() + 15)
 	toolbar:EnableMouse(true)
 	toolbar:Hide()
@@ -463,12 +488,23 @@ local function CreateToolbar(parent)
 	fill:SetPoint("TOPLEFT", 1, -1)
 	fill:SetPoint("BOTTOMRIGHT", -1, 1)
 
+	-- No reply icon exists in the icon image, and an arrow glyph may be missing
+	-- from the font, so the button says what it does.
+	local reply = ns.Widgets.TextButton(toolbar, "Reply", "HangoutFontSmall")
+	reply:SetSize(REPLY_BUTTON_WIDTH, TOOLBAR_BUTTON_SIZE)
+	reply:SetPoint("LEFT", TOOLBAR_PADDING, 0)
+	reply:SetScript("OnClick", function()
+		ns.Composer.SetReply(ns.selectedKey, toolbar.messageId)
+		HideToolbar()
+	end)
+
 	for index, emoji in ipairs(QUICK_BAR) do
 		CreateQuickButton(emoji, index)
 	end
 
 	local more = ns.Widgets.IconButton(toolbar, "smile", TOOLBAR_BUTTON_SIZE, 15, "More reactions")
-	more:SetPoint("LEFT", TOOLBAR_PADDING + #QUICK_BAR * TOOLBAR_BUTTON_SIZE, 0)
+	more:SetPoint("LEFT", TOOLBAR_PADDING + REPLY_BUTTON_WIDTH + #QUICK_BAR * TOOLBAR_BUTTON_SIZE, 0)
+	toolbar.reactionButtons[#toolbar.reactionButtons + 1] = more
 	more:SetScript("OnClick", function()
 		ShowReactionMenu(toolbarRow, toolbar.messageId)
 	end)
@@ -578,6 +614,24 @@ local function BuildRow(frame)
 
 	frame.senderButton = CreateNameButton(frame)
 	frame.crestButton = CreateNameButton(frame)
+	-- A clickable line above the body that shows the message this one replies to.
+	frame.quote = CreateFrame("Button", nil, frame)
+	frame.quote:SetHeight(QUOTE_HEIGHT - 2)
+	frame.quote.bar = ns.Widgets.Solid(frame.quote, "accent", "ARTWORK")
+	frame.quote.bar:SetPoint("TOPLEFT")
+	frame.quote.bar:SetPoint("BOTTOMLEFT")
+	frame.quote.bar:SetWidth(QUOTE_BAR_WIDTH)
+	frame.quote.sender = ns.Widgets.Text(frame.quote, "HangoutFontSmallBold", "text")
+	frame.quote.sender:SetPoint("LEFT", QUOTE_BAR_WIDTH + 6, 0)
+	frame.quote.sender:SetWordWrap(false)
+	frame.quote.text = ns.Widgets.Text(frame.quote, "HangoutFontSmall", "muted")
+	frame.quote.text:SetPoint("LEFT", frame.quote.sender, "RIGHT", 6, 0)
+	frame.quote.text:SetPoint("RIGHT")
+	frame.quote.text:SetWordWrap(false)
+	frame.quote:SetScript("OnClick", function(self)
+		local element = self:GetParent().element
+		if element and element.quote then MessageList.ShowAt(element.quote.id) end
+	end)
 
 	frame:SetHyperlinksEnabled(true)
 	frame:SetScript("OnHyperlinkClick", OnHyperlinkClick)
@@ -593,6 +647,13 @@ local function LayoutPlainMessage(frame, element)
 	local top = element.head and -HEADER_HEIGHT or 0
 	frame.crest:ClearAllPoints()
 	frame.crest:SetPoint("TOPLEFT", SIDE_PADDING, -4)
+
+	if element.quote then
+		frame.quote:ClearAllPoints()
+		frame.quote:SetPoint("TOPLEFT", frame, "TOPLEFT", TEXT_LEFT, top)
+		frame.quote:SetPoint("TOPRIGHT", frame, "TOPRIGHT", -SIDE_PADDING, top)
+		top = top - QUOTE_HEIGHT
+	end
 
 	frame.body:ClearAllPoints()
 	frame.body:SetWidth(0)
@@ -637,7 +698,11 @@ local function LayoutBubble(frame, element)
 
 	frame.bubble:ClearAllPoints()
 	frame.bubble:SetPoint(outgoing and "TOPRIGHT" or "TOPLEFT", outgoing and -SIDE_PADDING or TEXT_LEFT, top)
-	frame.bubble:SetSize(element.bodyWidth + BUBBLE_PAD_X * 2, element.bodyHeight + BUBBLE_PAD_Y * 2)
+	local quoteHeight = element.quote and QUOTE_HEIGHT or 0
+	-- A quote needs some room even when the message itself is short.
+	local innerWidth = element.quote and math.max(element.bodyWidth, math.min(QUOTE_MIN_BUBBLE_WIDTH, BubbleTextWidth()))
+		or element.bodyWidth
+	frame.bubble:SetSize(innerWidth + BUBBLE_PAD_X * 2, element.bodyHeight + BUBBLE_PAD_Y * 2 + quoteHeight)
 	PaintBubble(frame, element, false)
 
 	frame.crest:ClearAllPoints()
@@ -645,7 +710,12 @@ local function LayoutBubble(frame, element)
 
 	frame.body:ClearAllPoints()
 	frame.body:SetWidth(element.bodyWidth)
-	frame.body:SetPoint("TOPLEFT", frame.bubble, "TOPLEFT", BUBBLE_PAD_X, -BUBBLE_PAD_Y)
+	frame.body:SetPoint("TOPLEFT", frame.bubble, "TOPLEFT", BUBBLE_PAD_X, -BUBBLE_PAD_Y - quoteHeight)
+	if element.quote then
+		frame.quote:ClearAllPoints()
+		frame.quote:SetPoint("TOPLEFT", frame.bubble, "TOPLEFT", BUBBLE_PAD_X, -BUBBLE_PAD_Y)
+		frame.quote:SetPoint("TOPRIGHT", frame.bubble, "TOPRIGHT", -BUBBLE_PAD_X, -BUBBLE_PAD_Y)
+	end
 
 	frame.time:ClearAllPoints()
 	if outgoing then
@@ -731,6 +801,13 @@ local function InitRow(frame, element)
 	frame.mentionBar:SetShown(isMessage and element.mention)
 	frame.highlight:SetShown(isMessage and element.id ~= nil and element.id == highlightId)
 	frame.hover:Hide()
+	local quote = isMessage and element.quote or nil
+	frame.quote:SetShown(quote ~= nil)
+	frame.quote:EnableMouse(not ns.Window.IsFaded())
+	if quote then
+		frame.quote.sender:SetText(quote.sender)
+		frame.quote.text:SetText(quote.text)
+	end
 	frame:EnableMouse(not ns.Window.IsFaded())
 	frame:SetHyperlinksEnabled(not ns.Window.IsFaded())
 

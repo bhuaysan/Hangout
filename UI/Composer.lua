@@ -20,13 +20,74 @@ local ROW_HEIGHT = 22
 local POPUP_WIDTH = 220
 local POPUP_PADDING = 4
 
-local box, placeholder, fieldBorder
+local box, placeholder, fieldBorder, replyBar
 local popup
 local popupRows = {}
 -- The shortcode suggestions on show, the highlighted row and the partial they were built for.
 local suggestions, selected, suggestedFor = {}, 1, nil
 -- The name being cycled with Tab: where the word starts, the options and the one inserted.
 local tabState
+local REPLY_BAR_HEIGHT = 22
+local REPLY_SNIPPET_CHARS = 60
+
+-- One pending reply per chat, in memory only: { key, id, sender, snippet }.
+local replies = {}
+
+local function UpdateReplyBar()
+	local reply = ns.selectedKey and replies[ns.selectedKey]
+	if not replyBar then return end
+	replyBar:SetShown(reply ~= nil)
+	if reply then
+		replyBar.text:SetText("Replying to " .. reply.sender .. ": " .. reply.snippet)
+	end
+end
+
+local function ClearReply(key)
+	if key then replies[key] = nil end
+	UpdateReplyBar()
+end
+
+-- Starts a reply to a message of the open chat and moves typing to the box.
+function Composer.SetReply(key, messageId)
+	local conv = key and key == ns.selectedKey and ns.Store.Get(key)
+	local message = conv and ns.Store.FindMessage(conv, messageId)
+	if not message then return end
+	replies[key] = {
+		key = key,
+		id = messageId,
+		sender = ns.MessageList.SenderOf(message, conv),
+		snippet = ns.Util.Truncate(ns.Search.VisibleText(message.x), REPLY_SNIPPET_CHARS),
+	}
+	UpdateReplyBar()
+	Composer.Focus()
+end
+
+function Composer.PendingReply(key)
+	return replies[key]
+end
+
+-- The bar sits on the composer's top edge and overlaps the bottom of the
+-- message list, so the window layout needs no extra height for it.
+local function CreateReplyBar(parent)
+	replyBar = CreateFrame("Frame", nil, parent)
+	replyBar:SetHeight(REPLY_BAR_HEIGHT)
+	replyBar:SetPoint("BOTTOMLEFT", parent, "TOPLEFT", FIELD_SIDE, 0)
+	replyBar:SetPoint("BOTTOMRIGHT", parent, "TOPRIGHT", -FIELD_SIDE, 0)
+	replyBar:SetFrameLevel(parent:GetFrameLevel() + 20)
+	replyBar:EnableMouse(true)
+	replyBar:Hide()
+
+	ns.Widgets.RoundedFill(replyBar, "popup", "BACKGROUND"):SetAllPoints()
+
+	local close = ns.Widgets.IconButton(replyBar, "close", REPLY_BAR_HEIGHT, 10, "Cancel reply")
+	close:SetPoint("RIGHT", -2, 0)
+	close:SetScript("OnClick", function() ClearReply(ns.selectedKey) end)
+
+	replyBar.text = ns.Widgets.Text(replyBar, "HangoutFontSmall", "muted")
+	replyBar.text:SetPoint("LEFT", 8, 0)
+	replyBar.text:SetPoint("RIGHT", close, "LEFT", -4, 0)
+	replyBar.text:SetWordWrap(false)
+end
 
 local function UpdatePlaceholder()
 	placeholder:SetShown(box:GetText() == "" and not box:HasFocus())
@@ -167,6 +228,9 @@ end
 local function OnEscapePressed(self)
 	if popup and popup:IsVisible() then
 		HidePopup()
+	elseif self:GetText() == "" and ns.selectedKey and replies[ns.selectedKey] then
+		-- The first Escape cancels a reply, the next one leaves the box.
+		ClearReply(ns.selectedKey)
 	else
 		self:ClearFocus()
 	end
@@ -196,8 +260,10 @@ local function OnEnterPressed(self)
 		return
 	end
 	local text = self:GetText()
-	local ok, reason = ns.Send.Text(ns.selectedKey, text)
+	local key = ns.selectedKey
+	local ok, reason = ns.Send.Text(key, text, replies[key])
 	if ok then
+		ClearReply(key)
 		ns.History.Push(text)
 		self:SetText("")
 	elseif reason == "empty" then
@@ -268,6 +334,7 @@ function Composer.Create(parent)
 	box:SetFontObject(HangoutMessageFont)
 	box:SetTextColor(ns.Theme.Color("text"))
 	CreateEmojiButton(parent, field)
+	CreateReplyBar(parent)
 	box:SetAutoFocus(false)
 	box:SetMaxBytes(MAX_TOTAL_BYTES)
 
@@ -332,6 +399,8 @@ end)
 ns.On("LOCKDOWN_CHANGED", UpdateHint)
 
 ns.On("SELECTION_CHANGED", function(key)
+	replies = {}
+	UpdateReplyBar()
 	UpdateHint()
 	local conv = key and ns.Store.Get(key)
 	ns.History.Reset()

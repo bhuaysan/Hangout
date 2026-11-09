@@ -21,6 +21,7 @@ local RECENT_ACTIVITY_SECONDS = 300
 local BUDGET_WINDOW = 10
 local BUDGET_MESSAGES = 10
 local BACKOFF_SECONDS = 5
+local QUOTE_WAIT_SECONDS = 30
 
 local REACTION_MINE = 1
 local REACTION_THEIRS = 2
@@ -35,6 +36,8 @@ local lastTypingSent = {}
 local sendTimes = {}
 local backoffUntil = 0
 local readSenders = {}
+local outgoingReplies = {}
+local incomingReplies = {}
 
 -- Both sides see the same visible text, so a hash of it identifies a message
 -- without needing shared message IDs.
@@ -261,6 +264,56 @@ function Protocol.ToggleReaction(key, messageId, emoji)
 	ns.Fire("MESSAGES_CHANGED", key)
 end
 
+-- Remembers that the next echoed message with this text quotes another one, and
+-- returns a function that tells the other side, to call once the text is sent.
+function Protocol.PendingReply(key, text, quoted)
+	local conv = ns.Store.Get(key)
+	if not conv then return nil end
+	local sentRef = Protocol.Hash(text)
+	local quotedRef = Protocol.Hash(quoted.x)
+	local occurrence = OccurrenceOf(conv, quoted, quotedRef)
+	local list = outgoingReplies[key] or {}
+	outgoingReplies[key] = list
+	list[#list + 1] = { ref = sentRef, quotedId = quoted.i, expires = GetTime() + QUOTE_WAIT_SECONDS }
+	return function()
+		Transmit(key, "Q", sentRef, quotedRef, occurrence > 0 and occurrence or nil)
+	end
+end
+
+-- The newest incoming message with this hash that doesn't quote anything yet.
+local function FindUnlinkedIncoming(conv, ref)
+	local oldest = math.max(1, #conv.m - MESSAGE_SEARCH_DEPTH + 1)
+	for position = #conv.m, oldest, -1 do
+		local message = conv.m[position]
+		if message.o ~= 1 and not message.q and Protocol.Hash(message.x) == ref then
+			return message
+		end
+	end
+	return nil
+end
+
+local function LinkQuote(key, conv, entry, replying)
+	local quoted = FindMessage(conv, entry.quotedRef, false, entry.occurrence)
+	if not quoted or quoted == replying then return end
+	replying.q = quoted.i
+	ns.Fire("MESSAGES_CHANGED", key)
+end
+
+-- The addon message can overtake the chat message it describes, so a pair that
+-- finds no message yet waits for it for a while.
+local function OnQuote(key, conv, sentRef, quotedRef, occurrence)
+	if not sentRef or not quotedRef then return end
+	local entry = { quotedRef = quotedRef, occurrence = occurrence, ref = sentRef, expires = GetTime() + QUOTE_WAIT_SECONDS }
+	local replying = FindUnlinkedIncoming(conv, sentRef)
+	if replying then
+		LinkQuote(key, conv, entry, replying)
+		return
+	end
+	local list = incomingReplies[key] or {}
+	incomingReplies[key] = list
+	list[#list + 1] = entry
+end
+
 local function OnTyping(key)
 	typingUntil[key] = GetTime() + TYPING_VISIBLE_SECONDS
 	ns.Fire("TYPING_CHANGED")
@@ -306,6 +359,8 @@ local function HandlePayload(key, text)
 		OnRead(key, conv, parts[3])
 	elseif kind == "A" or kind == "X" then
 		OnReaction(key, conv, parts[3], parts[4], kind == "A", tonumber(parts[5]))
+	elseif kind == "Q" then
+		OnQuote(key, conv, parts[3], parts[4], tonumber(parts[5]))
 	end
 end
 
@@ -331,7 +386,38 @@ function Protocol.Init()
 	frame:SetScript("OnEvent", OnEvent)
 end
 
+-- Attaches a waiting quote link to the message it was announced for. Expired
+-- entries are dropped here so the lists never grow.
+local function ApplyPendingReplies(key, record)
+	local outgoing = record.o == 1
+	local pending = outgoing and outgoingReplies[key] or incomingReplies[key]
+	if not pending then return end
+
+	local now = GetTime()
+	local ref = Protocol.Hash(record.x)
+	local kept = {}
+	local conv = ns.Store.Get(key)
+	local matched = false
+	for _, entry in ipairs(pending) do
+		if now >= entry.expires then
+			-- expired, so it is simply not kept
+		elseif entry.ref ~= ref or matched or not conv then
+			kept[#kept + 1] = entry
+		elseif outgoing then
+			matched = true
+			record.q = entry.quotedId
+			ns.Fire("MESSAGES_CHANGED", key)
+		else
+			matched = true
+			LinkQuote(key, conv, entry, record)
+		end
+	end
+	local target = outgoing and outgoingReplies or incomingReplies
+	target[key] = #kept > 0 and kept or nil
+end
+
 ns.On("MESSAGE_ADDED", function(key, record)
+	ApplyPendingReplies(key, record)
 	if record.o == 1 then return end
 	-- Our hello is dropped while they have no conversation with us, so try again
 	-- once they've written, until they answer.
