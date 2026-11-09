@@ -45,10 +45,19 @@ function Launcher.UpdateVisibility()
 	if button then button:SetShown(ns.Get("showMinimap")) end
 end
 
-function Launcher.SetDnd(enabled)
+-- Records whether alerts are silenced, without touching the game's status.
+function Launcher.ApplyDnd(enabled)
+	if (ns.Get("dnd") and true or false) == enabled then
+		Launcher.UpdateDndIcon()
+		return
+	end
 	ns.Set("dnd", enabled)
 	Launcher.UpdateDndIcon()
 	ns.Fire("DND_CHANGED")
+end
+
+function Launcher.SetDnd(enabled)
+	ns.ProfileBar.SetStatus(enabled and "dnd" or "online")
 end
 
 local function ShowMenu(owner)
@@ -113,6 +122,7 @@ end
 function Launcher.Init()
 	CreateMinimapButton()
 	UpdateBadge()
+	ns.ProfileBar.SyncFromGame()
 	Launcher.UpdateDndIcon()
 	Launcher.UpdateVisibility()
 end

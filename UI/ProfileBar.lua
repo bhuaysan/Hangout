@@ -19,31 +19,51 @@ local STATUS_ORDER = { "online", "afk", "dnd" }
 
 local bar, crest, statusDot, nameText, statusText, statusButton, settingsButton
 
-local function IsGameAfk()
-	local afk = UnitIsAFK("player")
-	return canaccessvalue(afk) and afk and true or false
+-- Both flags can be secret during a chat restriction.
+local function ReadFlag(flag)
+	return canaccessvalue(flag) and flag and true or false
 end
 
--- Do Not Disturb is chosen on purpose, so going idle in the game can't override it.
+local function IsGameAfk()
+	return ReadFlag(UnitIsAFK("player"))
+end
+
+local function IsGameDnd()
+	return ReadFlag(UnitIsDND("player"))
+end
+
+-- The saved value keeps alerts silent even while the game's flag can't be read.
 function ProfileBar.CurrentStatus()
 	if ns.Get("dnd") then return "dnd" end
 	if IsGameAfk() then return "afk" end
 	return "online"
 end
 
--- The game toggles AFK with an empty message of this type, just as /afk does.
-local function SetGameAfk(wanted)
-	if IsGameAfk() == wanted then return end
+-- Empty messages of these types toggle the status, just as /afk and /dnd do.
+-- Whatever is being turned off goes first, so the order suits the server.
+local function ApplyGameStatus(wantAfk, wantDnd)
 	if ns.Lockdown.IsActive() then
-		ns.Print("Chat is restricted right now. Use /afk in normal chat.")
+		ns.Print("Chat is restricted right now, so your game status can't change. Use /afk or /dnd in normal chat.")
 		return
 	end
-	C_ChatInfo.SendChatMessage("", "AFK")
+	local afk, dnd = IsGameAfk(), IsGameDnd()
+	if afk and not wantAfk then C_ChatInfo.SendChatMessage("", "AFK") end
+	if dnd and not wantDnd then C_ChatInfo.SendChatMessage("", "DND") end
+	if wantAfk and not afk then C_ChatInfo.SendChatMessage("", "AFK") end
+	if wantDnd and not dnd then C_ChatInfo.SendChatMessage("", "DND") end
 end
 
 function ProfileBar.SetStatus(status)
-	ns.Launcher.SetDnd(status == "dnd")
-	SetGameAfk(status == "afk")
+	ns.Launcher.ApplyDnd(status == "dnd")
+	ApplyGameStatus(status == "afk", status == "dnd")
+end
+
+-- Picks up /dnd typed in chat. The game's flag is the truth whenever it's readable.
+function ProfileBar.SyncFromGame()
+	local flag = UnitIsDND("player")
+	if canaccessvalue(flag) then
+		ns.Launcher.ApplyDnd(flag and true or false)
+	end
 end
 
 local function Refresh()
@@ -145,7 +165,10 @@ end
 ns.On("DND_CHANGED", Refresh)
 ns.On("THEME_CHANGED", Refresh)
 
--- Also catches /afk typed in chat and the game marking the player idle.
+-- Catches /afk and /dnd typed in chat and the game marking the player idle.
 local statusEvents = CreateFrame("Frame")
 statusEvents:RegisterEvent("PLAYER_FLAGS_CHANGED")
-statusEvents:SetScript("OnEvent", Refresh)
+statusEvents:SetScript("OnEvent", function()
+	ProfileBar.SyncFromGame()
+	Refresh()
+end)

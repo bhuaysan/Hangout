@@ -146,6 +146,8 @@ function stubs.Install()
 		GetChatLineSenderGUID = function(id) return stubs.chatLines[id].guid end,
 		SendChatMessage = function(text, chatType, language, target)
 			stubs.sent[#stubs.sent + 1] = { text = text, chatType = chatType, target = target }
+			if chatType == "AFK" then stubs.afk = not stubs.afk end
+			if chatType == "DND" then stubs.dnd = not stubs.dnd end
 		end,
 	}
 	_G.C_BattleNet = {
@@ -169,7 +171,9 @@ function stubs.Install()
 	_G.RAID_CLASS_COLORS = { SHAMAN = { r = 0, g = 0.44, b = 0.87 } }
 	_G.CLASS_ICON_TCOORDS = { SHAMAN = { 0.25, 0.5, 0.25, 0.5 } }
 	stubs.afk = false
+	stubs.dnd = false
 	_G.UnitIsAFK = function() return stubs.afk end
+	_G.UnitIsDND = function() return stubs.dnd end
 	_G.LOCALIZED_CLASS_NAMES_MALE = { SHAMAN = "Schamane" }
 	_G.SlashCmdList = {}
 	_G.HangoutDB = nil
