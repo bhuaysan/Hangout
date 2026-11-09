@@ -48,6 +48,23 @@ local LIGHT_OVERLAYS = {
 	notice = { 0.95, 0.70, 0.20, 0.55 },
 }
 
+local function ColorFromHex(hex)
+	return {
+		tonumber(hex:sub(1, 2), 16) / 255,
+		tonumber(hex:sub(3, 4), 16) / 255,
+		tonumber(hex:sub(5, 6), 16) / 255,
+	}
+end
+
+local function HexPreset(label, overlays, hex)
+	local colors = {}
+	for token, value in pairs(hex) do
+		colors[token] = ColorFromHex(value)
+	end
+	return { label = label, overlays = overlays, colors = colors }
+end
+
+-- Preset keys may only contain letters, or their exported theme strings can't be imported.
 local PRESETS = {
 	midnight = {
 		label = "Midnight",
@@ -82,9 +99,42 @@ local PRESETS = {
 			accent = { 0.48, 0.30, 0.04 },
 		},
 	},
+	catppuccinmocha = HexPreset("Catppuccin Mocha", DARK_OVERLAYS,
+		{ bg = "1e1e2e", sidebar = "181825", text = "cdd6f4", muted = "a6adc8", accent = "cba6f7" }),
+	catppuccinmacchiato = HexPreset("Catppuccin Macchiato", DARK_OVERLAYS,
+		{ bg = "24273a", sidebar = "1e2030", text = "cad3f5", muted = "a5adcb", accent = "c6a0f6" }),
+	catppuccinfrappe = HexPreset("Catppuccin Frapp\195\169", DARK_OVERLAYS,
+		{ bg = "303446", sidebar = "292c3c", text = "d0d9f7", muted = "a5adce", accent = "ca9ee6" }),
+	catppuccinlatte = HexPreset("Catppuccin Latte", LIGHT_OVERLAYS,
+		{ bg = "eff1f5", sidebar = "e6e9ef", text = "44475f", muted = "5c5f77", accent = "8435e8" }),
+	dracula = HexPreset("Dracula", DARK_OVERLAYS,
+		{ bg = "282a36", sidebar = "21222c", text = "f8f8f2", muted = "a3adcc", accent = "bd93f9" }),
+	everforest = HexPreset("Everforest", DARK_OVERLAYS,
+		{ bg = "2d353b", sidebar = "232a2e", text = "e6dfc8", muted = "9da9a0", accent = "a7c080" }),
+	gruvboxdark = HexPreset("Gruvbox Dark", DARK_OVERLAYS,
+		{ bg = "282828", sidebar = "1d2021", text = "ebdbb2", muted = "a89984", accent = "fe8019" }),
+	gruvboxlight = HexPreset("Gruvbox Light", LIGHT_OVERLAYS,
+		{ bg = "fbf1c7", sidebar = "ebdbb2", text = "3c3836", muted = "665c54", accent = "a83600" }),
+	kanagawa = HexPreset("Kanagawa", DARK_OVERLAYS,
+		{ bg = "1f1f28", sidebar = "16161d", text = "dcd7ba", muted = "938aa9", accent = "7e9cd8" }),
+	nord = HexPreset("Nord", DARK_OVERLAYS,
+		{ bg = "2e3440", sidebar = "272c36", text = "d8dee9", muted = "a3aebf", accent = "88c0d0" }),
+	onedark = HexPreset("One Dark", DARK_OVERLAYS,
+		{ bg = "282c34", sidebar = "21252b", text = "c8ccd4", muted = "9da5b4", accent = "61afef" }),
+	rosepine = HexPreset("Ros\195\169 Pine", DARK_OVERLAYS,
+		{ bg = "1f1d2e", sidebar = "191724", text = "e0def4", muted = "908caa", accent = "ebbcba" }),
+	solarizeddark = HexPreset("Solarized Dark", DARK_OVERLAYS,
+		{ bg = "002b36", sidebar = "00212b", text = "eee8d5", muted = "93a1a1", accent = "2aa198" }),
+	tokyonight = HexPreset("Tokyo Night", DARK_OVERLAYS,
+		{ bg = "1a1b26", sidebar = "16161e", text = "c0caf5", muted = "9aa5ce", accent = "7aa2f7" }),
 }
 
-Theme.PRESET_ORDER = { "midnight", "ember", "paper" }
+Theme.PRESET_ORDER = {
+	"midnight", "ember", "paper",
+	"catppuccinmocha", "catppuccinmacchiato", "catppuccinfrappe", "catppuccinlatte",
+	"dracula", "everforest", "gruvboxdark", "gruvboxlight", "kanagawa", "nord",
+	"onedark", "rosepine", "solarizeddark", "tokyonight",
+}
 
 local tokens = {}
 local messageFont = CreateFont("HangoutMessageFont")
@@ -265,9 +315,9 @@ function Theme.Import(text)
 
 	local custom = {}
 	for part in body:gmatch("[^,]+") do
-		local token, red, green, blue = part:match("^(%a+)=(%x%x)(%x%x)(%x%x)$")
+		local token, hex = part:match("^(%a+)=(%x%x%x%x%x%x)$")
 		if not token or not IsCustomizable(token) then return false end
-		custom[token] = { tonumber(red, 16) / 255, tonumber(green, 16) / 255, tonumber(blue, 16) / 255 }
+		custom[token] = ColorFromHex(hex)
 	end
 	if not next(custom) then return false end
 

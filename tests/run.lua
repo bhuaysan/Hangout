@@ -1375,6 +1375,32 @@ Test("every theme's accent is readable on its own surfaces", function()
 	end
 end)
 
+Test("every theme's text and secondary text are readable on its own surfaces", function()
+	local ns = Boot()
+	for _, preset in ipairs(ns.Theme.PRESET_ORDER) do
+		ns.Theme.SetPreset(preset)
+		local tr, tg, tb = ns.Theme.Color("text")
+		local mr, mg, mb = ns.Theme.Color("muted")
+		for _, surface in ipairs({ "bg", "sidebar" }) do
+			local sr, sg, sb = ns.Theme.Color(surface)
+			assert(ContrastOf(tr, tg, tb, sr, sg, sb) >= 4.5, preset .. " text on " .. surface)
+			assert(ContrastOf(mr, mg, mb, sr, sg, sb) >= 4, preset .. " muted on " .. surface)
+		end
+	end
+end)
+
+Test("every theme's exported string imports back to that theme", function()
+	local ns = Boot()
+	for _, preset in ipairs(ns.Theme.PRESET_ORDER) do
+		ns.Theme.SetPreset(preset)
+		local exported = ns.Theme.Export()
+		ns.Theme.SetPreset(preset == "midnight" and "ember" or "midnight")
+		Equal(ns.Theme.Import(exported), true)
+		Equal(ns.Theme.ActiveName(), preset)
+		Equal(ns.Theme.Export(), exported)
+	end
+end)
+
 Test("dark text on a light theme has no shadow, and follows theme changes", function()
 	local ns = Boot()
 	local shadowAlpha
