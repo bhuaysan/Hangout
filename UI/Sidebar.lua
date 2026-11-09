@@ -69,10 +69,10 @@ end
 
 local function BuildSearchElements(list, query, results)
 	local elements = {}
-	local needle = query:lower()
+	local needle = ns.Util.Lower(query)
 	local rows = {}
 	for _, entry in ipairs(list) do
-		if ns.Store.LabelFor(entry.key, entry.conv):lower():find(needle, 1, true) then
+		if ns.Util.Lower(ns.Store.LabelFor(entry.key, entry.conv)):find(needle, 1, true) then
 			rows[#rows + 1] = RowFor(entry)
 		end
 	end

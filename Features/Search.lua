@@ -22,7 +22,7 @@ end
 -- explicitScope tells whether the query chose a scope itself, so the sidebar's
 -- toggle only applies when it didn't.
 function Search.ParseQuery(text)
-	local rest = " " .. (text or ""):lower() .. " "
+	local rest = " " .. ns.Util.Lower(text or "") .. " "
 	local parsed = { from = nil, scope = "all", explicitScope = false }
 
 	rest = rest:gsub('%sfrom:"([^"]*)"', function(name)
@@ -63,7 +63,7 @@ function Search.Highlight(text, needle, colorHex)
 	-- needle with a pipe could never be told apart from an escape.
 	text = text:gsub("|T.-|t", ""):gsub("|A.-|a", "")
 	if needle:find("|", 1, true) then return text end
-	local lowered = text:lower()
+	local lowered = ns.Util.Lower(text)
 	local pieces, position = {}, 1
 	while true do
 		local first, last = lowered:find(needle, position, true)
@@ -114,9 +114,9 @@ local function SenderMatches(from, entry, message)
 	end
 	local sender = message.s or entry.conv.name
 	if not sender then return false end
-	sender = sender:lower()
+	sender = ns.Util.Lower(sender)
 	if sender:sub(1, #from) == from then return true end
-	return ns.Util.DisplayName(sender):lower():sub(1, #from) == from
+	return ns.Util.DisplayName(sender):sub(1, #from) == from
 end
 
 local function SenderOf(entry, message)
@@ -128,7 +128,7 @@ end
 local function CheckMessage(state, entry, message)
 	if state.from and not SenderMatches(state.from, entry, message) then return end
 	local visible = Search.VisibleText(message.x)
-	if state.needle == "" or visible:lower():find(state.needle, 1, true) then
+	if state.needle == "" or ns.Util.Lower(visible):find(state.needle, 1, true) then
 		state.results[#state.results + 1] = {
 			key = entry.key,
 			id = message.i,

@@ -6,13 +6,6 @@ ns.Composer = Composer
 
 local MAX_TOTAL_BYTES = 1020
 
-local REASON_TEXT = {
-	restricted = L["Chat is restricted right now, so Hangout can't send this. Your text is still here. For something urgent, use normal chat."],
-	tooLong = L["That message is too long to send."],
-	slash = L["Slash commands only work in normal chat."],
-	unavailable = L["This conversation can't receive messages right now."],
-}
-
 local FIELD_SIDE = 14
 local FIELD_TOP = 8
 local FIELD_BOTTOM = 12
@@ -287,7 +280,7 @@ local function OnEnterPressed(self)
 	elseif reason == "empty" then
 		self:ClearFocus()
 	else
-		ns.Print(REASON_TEXT[reason])
+		ns.Print(ns.Send.ReasonText(reason))
 	end
 end
 

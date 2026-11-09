@@ -22,6 +22,7 @@ Features\Alerts.lua
 Features\Broker.lua
 Features\EmojiData.lua
 Features\Emoji.lua
+Features\Links.lua
 Features\Filter.lua
 Features\Search.lua
 Features\History.lua

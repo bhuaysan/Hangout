@@ -32,7 +32,7 @@ local function NewDatabase()
 end
 
 function DB.Init()
-	ns.session = { conv = {}, live = {}, liveUnread = {} }
+	ns.session = { conv = {}, live = {}, liveUnread = {}, notices = {} }
 	ns.charIndex = 0
 
 	if HangoutDB == nil then

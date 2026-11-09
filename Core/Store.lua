@@ -153,6 +153,47 @@ function Store.GetLive(key)
 	return ns.session.live[key]
 end
 
+-- Notices are status lines inside a chat: { t = serverTime, kind = "failed" or
+-- "away", text = ... }. They aren't messages, so they stay in memory and out of
+-- search, copies, unread counts and the Hangout protocol. "away" notices keep
+-- only the newest of the same text, as every whisper gets the same auto-reply.
+function Store.AddNotice(key, notice)
+	local list = ns.session.notices[key]
+	if not list then
+		list = {}
+		ns.session.notices[key] = list
+	end
+	if notice.kind == "away" then
+		for index = #list, 1, -1 do
+			if list[index].kind == "away" and list[index].text == notice.text then
+				table.remove(list, index)
+			end
+		end
+	end
+	list[#list + 1] = notice
+	local ring = ns.Get("sessionRing")
+	if #list > ring then
+		DropOldest(list, #list - ring)
+	end
+	ns.Fire("MESSAGES_CHANGED", key)
+end
+
+function Store.GetNotices(key)
+	return ns.session.notices[key]
+end
+
+function Store.RemoveNotice(key, notice)
+	local list = ns.session.notices[key]
+	if not list then return end
+	for index = #list, 1, -1 do
+		if list[index] == notice then
+			table.remove(list, index)
+			break
+		end
+	end
+	ns.Fire("MESSAGES_CHANGED", key)
+end
+
 -- What a sidebar row shows: the newest message's text and its time, or nil for
 -- a chat with no messages. Locked text is secret, so it is never read here.
 function Store.LastActivity(key, conv)
@@ -165,14 +206,14 @@ function Store.LastActivity(key, conv)
 	end
 	if not last then return nil end
 
-	local prefix = ""
+	local text = ns.Emoji.Display(last.x)
 	if last.o == 1 then
-		prefix = "You: "
+		return L["You: %s"]:format(text), last.t
 	elseif last.s then
 		local sender = Store.SenderLabel(last.s)
-		prefix = (sender:match("^%S+") or sender) .. ": "
+		return L["%s: %s"]:format(sender:match("^%S+") or sender, text), last.t
 	end
-	return prefix .. ns.Emoji.Display(last.x), last.t
+	return text, last.t
 end
 
 -- Replaces the locked elements of every conversation after recovery.
@@ -217,15 +258,16 @@ function Store.StartWhisper(typedName)
 	local name = ns.Util.NormalizeName(ns.Util.Trim(typedName))
 	if not name then return nil end
 
-	local wanted = name:lower()
+	local wanted = ns.Util.Lower(name)
 	for _, entry in ipairs(Store.List()) do
-		if entry.key:sub(1, 2) == "W:" and entry.key:sub(3):lower() == wanted then
+		if entry.key:sub(1, 2) == "W:" and ns.Util.Lower(entry.key:sub(3)) == wanted then
 			return entry.key
 		end
 	end
 
-	name = name:gsub("(%S)(%S*)", function(first, rest)
-		return first:upper() .. rest:lower()
+	name = name:gsub("%S+", function(word)
+		local first = ns.Util.FirstCharacter(word)
+		return ns.Util.Upper(first) .. ns.Util.Lower(word:sub(#first + 1))
 	end)
 	local key = "W:" .. name
 	local conv = Store.Ensure(key, { name = name })
@@ -308,6 +350,7 @@ function Store.Delete(key)
 	ns.session.conv[key] = nil
 	ns.session.live[key] = nil
 	ns.session.liveUnread[key] = nil
+	ns.session.notices[key] = nil
 	ns.Fire("CONV_CHANGED")
 end
 

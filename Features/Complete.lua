@@ -34,7 +34,7 @@ local function Candidates(conv)
 	local names, seen = {}, {}
 	local function add(name)
 		if not name or name == "" then return end
-		local key = name:lower()
+		local key = ns.Util.Lower(name)
 		if seen[key] then return end
 		seen[key] = true
 		names[#names + 1] = name
@@ -58,9 +58,9 @@ end
 function Complete.Names(conv, prefix)
 	local result = {}
 	if not conv or not prefix or prefix == "" then return result end
-	local needle = prefix:lower()
+	local needle = ns.Util.Lower(prefix)
 	for _, name in ipairs(Candidates(conv)) do
-		local lower = name:lower()
+		local lower = ns.Util.Lower(name)
 		if lower:sub(1, #needle) == needle or FirstName(lower):sub(1, #needle) == needle then
 			result[#result + 1] = name
 		end

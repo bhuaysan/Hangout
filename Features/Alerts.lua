@@ -54,9 +54,9 @@ end
 
 local function Needles()
 	if not needles then
-		needles = { ns.me:match("^(%S+)"):lower() }
+		needles = { ns.Util.Lower(ns.me:match("^(%S+)")) }
 		for _, keyword in ipairs(ns.Get("keywords") or {}) do
-			needles[#needles + 1] = keyword
+			needles[#needles + 1] = ns.Util.Lower(keyword)
 		end
 	end
 	return needles
@@ -65,7 +65,7 @@ end
 -- True if text contains the player's first name or a keyword as a whole word.
 -- Item and spell links are ignored, so a linked item can't trigger a mention.
 function Alerts.IsMention(text)
-	local plain = text:gsub("|c[^|]*|H.-|h.-|h|r", ""):gsub("|H.-|h.-|h", ""):lower()
+	local plain = ns.Util.Lower(text:gsub("|c[^|]*|H.-|h.-|h|r", ""):gsub("|H.-|h.-|h", ""))
 	for _, word in ipairs(Needles()) do
 		if ContainsWord(plain, word) then return true end
 	end
@@ -73,11 +73,11 @@ function Alerts.IsMention(text)
 end
 
 function Alerts.AddKeyword(word)
-	word = ns.Util.Trim(word):lower()
+	word = ns.Util.Lower(ns.Util.Trim(word))
 	if word == "" then return end
 	local keywords = {}
 	for _, existing in ipairs(ns.Get("keywords") or {}) do
-		if existing == word then return end
+		if ns.Util.Lower(existing) == word then return end
 		keywords[#keywords + 1] = existing
 	end
 	keywords[#keywords + 1] = word
@@ -93,10 +93,10 @@ function Alerts.SetKeywords(text)
 end
 
 function Alerts.RemoveKeyword(word)
-	word = ns.Util.Trim(word):lower()
+	word = ns.Util.Lower(ns.Util.Trim(word))
 	local keywords = {}
 	for _, existing in ipairs(ns.Get("keywords") or {}) do
-		if existing ~= word then keywords[#keywords + 1] = existing end
+		if ns.Util.Lower(existing) ~= word then keywords[#keywords + 1] = existing end
 	end
 	ns.Set("keywords", #keywords > 0 and keywords or nil)
 	needles = nil

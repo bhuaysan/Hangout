@@ -139,7 +139,7 @@ end
 local function Before(a, b)
 	if a.online ~= b.online then return a.online end
 	if a.leader ~= b.leader then return a.leader end
-	local nameA, nameB = a.name:lower(), b.name:lower()
+	local nameA, nameB = ns.Util.Lower(a.name), ns.Util.Lower(b.name)
 	if nameA ~= nameB then return nameA < nameB end
 	return a.name < b.name
 end

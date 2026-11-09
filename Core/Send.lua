@@ -1,4 +1,5 @@
 local _, ns = ...
+local L = ns.L
 
 local Send = {}
 ns.Send = Send
@@ -9,6 +10,76 @@ local SPACE = 32
 local PIPE = 124
 local QUOTE_PREFIX_CHARS = 32
 local QUOTE_SENDER_CHARS = 24
+local PENDING_SECONDS = 10
+
+local REASON_TEXT = {
+	restricted = L["Chat is restricted right now, so Hangout can't send this. Your text is still here. For something urgent, use normal chat."],
+	tooLong = L["That message is too long to send."],
+	slash = L["Slash commands only work in normal chat."],
+	unavailable = L["This conversation can't receive messages right now."],
+}
+
+-- Whispers sent but not yet echoed by the server, oldest first: { key, text, expires }.
+local pending = {}
+
+function Send.ReasonText(reason)
+	return REASON_TEXT[reason]
+end
+
+local function DropExpired()
+	local now = GetTime()
+	local kept = {}
+	for _, entry in ipairs(pending) do
+		if entry.expires > now then kept[#kept + 1] = entry end
+	end
+	pending = kept
+end
+
+-- Must run before the message goes out: failure events can fire during the send.
+local function TrackWhisper(key, text)
+	local prefix = key:sub(1, 1)
+	if prefix ~= "W" and prefix ~= "B" then return end
+	DropExpired()
+	pending[#pending + 1] = { key = key, text = text, expires = GetTime() + PENDING_SECONDS }
+end
+
+-- Removes and returns the oldest waiting whisper that matches.
+local function TakePending(matches)
+	DropExpired()
+	for index, entry in ipairs(pending) do
+		if matches(entry) then
+			table.remove(pending, index)
+			return entry
+		end
+	end
+	return nil
+end
+
+local function MarkFailed(entry)
+	if entry then
+		ns.Store.AddNotice(entry.key, { kind = "failed", t = GetServerTime(), text = entry.text })
+	end
+end
+
+function Send.OnDeliveryFailed(key)
+	MarkFailed(TakePending(function(entry) return entry.key == key end))
+end
+
+-- The game reports an offline whisper target only as a system line. Only
+-- whispers Hangout sent can match, so Hangout's own addon traffic stays silent.
+function Send.OnSystemMessage(text)
+	if #pending == 0 or not ERR_CHAT_PLAYER_NOT_FOUND_S then return end
+	local lowered = ns.Util.Lower(text)
+	MarkFailed(TakePending(function(entry)
+		return entry.key:sub(1, 1) == "W"
+			and lowered == ns.Util.Lower(ERR_CHAT_PLAYER_NOT_FOUND_S:format(entry.key:sub(3)))
+	end))
+end
+
+ns.On("MESSAGE_ADDED", function(key, record)
+	if record.o ~= 1 then return end
+	TakePending(function(entry) return entry.key == key and entry.text == record.x end)
+end)
 
 local CHAT_TYPE_BY_PREFIX = {
 	G = "GUILD",
@@ -162,8 +233,19 @@ function Send.Text(key, text, reply)
 	-- The echo of the first part is what the link attaches to.
 	local transmitLink = asLink and ns.Protocol.PendingReply(key, parts[1], quoted)
 	for i = 1, #parts do
+		TrackWhisper(key, parts[i])
 		deliver(parts[i])
 	end
 	if transmitLink then transmitLink() end
 	return true
+end
+
+-- Must be called from a click or key press, like Send.Text. Prints why if it can't send.
+function Send.Retry(key, notice)
+	local ok, reason = Send.Text(key, notice.text)
+	if ok then
+		ns.Store.RemoveNotice(key, notice)
+	else
+		ns.Print(Send.ReasonText(reason))
+	end
 end

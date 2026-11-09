@@ -32,6 +32,9 @@ local CONTEXT_ROWS = 20
 local QUOTE_HEIGHT = 18
 local QUOTE_BAR_WIDTH = 2
 local QUOTE_TEXT_CHARS = 80
+local FAILED_TEXT_CHARS = 80
+local RETRY_PADDING = 12
+local RETRY_HEIGHT = 20
 local QUOTE_MIN_BUBBLE_WIDTH = 160
 local REPLY_BUTTON_WIDTH = 62
 
@@ -102,11 +105,7 @@ function MessageList.DayLabel(timestamp, now)
 	if day == date("%Y-%m-%d", now) then return L["Today"] end
 	if day == date("%Y-%m-%d", now - SECONDS_PER_DAY) then return L["Yesterday"] end
 
-	local label = date("%B ", timestamp) .. tonumber(date("%d", timestamp))
-	if date("%Y", timestamp) ~= date("%Y", now) then
-		label = label .. ", " .. date("%Y", timestamp)
-	end
-	return label
+	return ns.Util.LongDate(timestamp, date("%Y", timestamp) ~= date("%Y", now))
 end
 
 -- The character a message came from, for the player menu. Outgoing messages
@@ -128,6 +127,19 @@ function MessageList.ConversationText(_, conv)
 	return table.concat(lines, "\n")
 end
 
+local function NoticeElement(notice, key)
+	if notice.kind == "failed" then
+		return {
+			kind = "failed",
+			key = key,
+			notice = notice,
+			label = L["Not delivered: %s"]:format(
+				ns.Util.Truncate(ns.Search.VisibleText(notice.text), FAILED_TEXT_CHARS)),
+		}
+	end
+	return { kind = "notice", label = notice.text }
+end
+
 -- Turns stored messages into list rows: day separators, and messages that
 -- only show a header when the sender changes or time has passed.
 -- unreadAfterId, if set, marks where "New messages" begins. key tells whisper
@@ -144,8 +156,33 @@ function MessageList.BuildElements(conv, limit, live, unreadAfterId, key)
 	local previousDay, previous, previousSender
 	local dividerPlaced = false
 	local seenPosition
+
+	-- Notices live beside the messages and are slotted in by time. A notice from
+	-- the same second as a message reacts to it, so it goes after that message.
+	local notices = key and ns.Store.GetNotices(key) or {}
+	local nextNotice = 1
+	if first > 1 then
+		while notices[nextNotice] and notices[nextNotice].t < messages[first].t do
+			nextNotice = nextNotice + 1
+		end
+	end
+	local function PlaceNotices(before)
+		while notices[nextNotice] and (not before or notices[nextNotice].t < before) do
+			local notice = notices[nextNotice]
+			local day = date("%Y-%m-%d", notice.t)
+			if day ~= previousDay then
+				elements[#elements + 1] = { kind = "day", label = MessageList.DayLabel(notice.t, now) }
+				previousDay = day
+			end
+			elements[#elements + 1] = NoticeElement(notice, key)
+			previous = nil
+			nextNotice = nextNotice + 1
+		end
+	end
+
 	for i = first, #messages do
 		local message = messages[i]
+		PlaceNotices(message.t)
 		local day = date("%Y-%m-%d", message.t)
 		if day ~= previousDay then
 			elements[#elements + 1] = { kind = "day", label = MessageList.DayLabel(message.t, now) }
@@ -173,7 +210,7 @@ function MessageList.BuildElements(conv, limit, live, unreadAfterId, key)
 			mention = message.s ~= nil and message.o ~= 1 and ns.Alerts.IsMention(message.x),
 			reactions = ns.Protocol.ReactionList(message.r),
 			time = date("%H:%M", message.t),
-			display = ns.Emoji.Display(message.x),
+			display = ns.Links.Display(message.x),
 			quote = quoted and {
 				sender = SenderOf(quoted, conv),
 				text = ns.Util.Truncate(ns.Search.VisibleText(quoted.x), QUOTE_TEXT_CHARS),
@@ -189,6 +226,7 @@ function MessageList.BuildElements(conv, limit, live, unreadAfterId, key)
 		previous = message
 		previousSender = sender
 	end
+	PlaceNotices()
 
 	if seenPosition then
 		table.insert(elements, seenPosition + 1, { kind = "seen", label = L["Seen"] })
@@ -292,6 +330,11 @@ end
 
 -- Names in player: links open the same menu instead of the default chat's edit box.
 local function OnHyperlinkClick(self, link, text, button)
+	local url = ns.Links.UrlFrom(link)
+	if url then
+		ns.CopyBox.Show(L["Copy link"], url)
+		return
+	end
 	local playerName = link:match("^player:([^:]+)")
 	-- Shift, Ctrl and Alt keep their default meanings (such as pasting the name into the chat box).
 	if playerName and not IsModifierKeyDown() then
@@ -547,6 +590,17 @@ local function BuildRow(frame)
 
 	frame.label = ns.Widgets.Text(frame, "HangoutFontSmall", "muted")
 	frame.label:SetJustifyH("CENTER")
+	frame.label:SetWordWrap(false)
+
+	-- The game can't open a browser, and a failed whisper needs a key press or click to resend.
+	local retryLabel
+	frame.retry, retryLabel = ns.Widgets.TextButton(frame, L["Send again"], "HangoutFontSmall")
+	frame.retry:SetSize(retryLabel:GetStringWidth() + RETRY_PADDING, RETRY_HEIGHT)
+	frame.retry:SetPoint("RIGHT", -SIDE_PADDING, 0)
+	frame.retry:SetScript("OnClick", function(self)
+		local element = self:GetParent().element
+		if element and element.notice then ns.Send.Retry(element.key, element.notice) end
+	end)
 
 	frame.highlight = ns.Widgets.Fill(frame, "selected")
 	frame.hover = ns.Widgets.Fill(frame, "hover")
@@ -739,6 +793,8 @@ local function InitRow(frame, element)
 
 	local isMessage = element.kind == "message"
 	local isOpener = element.kind == "opener"
+	local isFailed = element.kind == "failed"
+	frame.retry:SetShown(isFailed and not ns.Window.IsFaded())
 	ns.Widgets.ShowChatAvatar(frame.openerAvatar, isOpener and element or nil)
 	frame.openerTitle:SetShown(isOpener)
 	frame.openerText:SetShown(isOpener)
@@ -776,13 +832,20 @@ local function InitRow(frame, element)
 	if not isMessage then
 		LayoutPills(frame, element)
 		frame.label:ClearAllPoints()
+		frame.label:SetJustifyH(isFailed and "RIGHT" or "CENTER")
 		if element.kind == "seen" and IsWhisper(ns.selectedKey) then
+			frame.label:SetPoint("RIGHT", -SIDE_PADDING, 0)
+		elseif isFailed then
+			frame.label:SetPoint("LEFT", SIDE_PADDING, 0)
+			frame.label:SetPoint("RIGHT", frame.retry, "LEFT", -4, 0)
+		elseif element.kind == "notice" then
+			frame.label:SetPoint("LEFT", SIDE_PADDING, 0)
 			frame.label:SetPoint("RIGHT", -SIDE_PADDING, 0)
 		else
 			frame.label:SetPoint("CENTER")
 		end
 		frame.label:SetText(element.label)
-		frame.label:SetTextColor(ns.Theme.Color(element.kind == "unread" and "accent" or "muted"))
+		frame.label:SetTextColor(ns.Theme.Color((element.kind == "unread" or isFailed) and "accent" or "muted"))
 		return
 	end
 

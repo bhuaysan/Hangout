@@ -3648,6 +3648,240 @@ Test("the German locale translates known keys and falls back to the key itself",
 	Equal(ns.L["No such key anywhere"], "No such key anywhere")
 end)
 
+local NOVA = "W:Nova Reed"
+local NOT_FOUND = "No player named 'nova reed' is currently playing."
+
+local function BootWithChat()
+	local ns = Boot(Database({}))
+	ns.Store.Ensure(NOVA, { name = "Nova Reed" })
+	return ns
+end
+
+local function ElementKinds(ns, key)
+	local kinds = {}
+	for _, element in ipairs(ns.MessageList.BuildElements(ns.Store.Get(key), 200, nil, nil, key)) do
+		if element.kind ~= "day" then kinds[#kinds + 1] = element.kind end
+	end
+	return table.concat(kinds, ",")
+end
+
+Test("a whisper to an offline player becomes a notice that can be sent again", function()
+	local ns = BootWithChat()
+	assert(ns.Send.Text(NOVA, "are you there"))
+	Equal(#stubs.sent, 1)
+	Chat(ns, "CHAT_MSG_SYSTEM", { text = NOT_FOUND, name = "" })
+
+	local notices = ns.Store.GetNotices(NOVA)
+	Equal(#notices, 1)
+	Equal(notices[1].kind, "failed")
+	Equal(notices[1].text, "are you there")
+	Equal(#ns.Store.Get(NOVA).m, 0, "a notice is not a message")
+
+	ns.Send.Retry(NOVA, notices[1])
+	Equal(#stubs.sent, 2)
+	Equal(#ns.Store.GetNotices(NOVA), 0)
+end)
+
+Test("a failed retry keeps the notice and says why", function()
+	local ns = BootWithChat()
+	ns.Send.Text(NOVA, "hello")
+	Chat(ns, "CHAT_MSG_SYSTEM", { text = NOT_FOUND, name = "" })
+	stubs.lockdown = true
+	ns.Send.Retry(NOVA, ns.Store.GetNotices(NOVA)[1])
+	Equal(#ns.Store.GetNotices(NOVA), 1)
+	assert(stubs.printed[#stubs.printed]:find("restricted", 1, true))
+end)
+
+Test("the not-found line is ignored once the whisper was delivered or forgotten", function()
+	local ns = BootWithChat()
+	ns.Send.Text(NOVA, "delivered")
+	Chat(ns, "CHAT_MSG_WHISPER_INFORM", { text = "delivered", name = "Nova Reed" })
+	Chat(ns, "CHAT_MSG_SYSTEM", { text = NOT_FOUND, name = "" })
+	Equal(ns.Store.GetNotices(NOVA), nil, "echoed")
+
+	ns.Send.Text(NOVA, "late")
+	stubs.time = stubs.time + 11
+	Chat(ns, "CHAT_MSG_SYSTEM", { text = NOT_FOUND, name = "" })
+	Equal(ns.Store.GetNotices(NOVA), nil, "expired")
+end)
+
+Test("the not-found line only marks whispers to the named player", function()
+	local ns = BootWithChat()
+	ns.Store.Ensure("W:Ada Vale", { name = "Ada Vale" })
+	ns.Send.Text("W:Ada Vale", "hi Ada")
+	Chat(ns, "CHAT_MSG_SYSTEM", { text = NOT_FOUND, name = "" })
+	Equal(ns.Store.GetNotices("W:Ada Vale"), nil)
+end)
+
+Test("each part of a split whisper is marked on its own", function()
+	local ns = BootWithChat()
+	ns.Send.Text(NOVA, ("word "):rep(70))
+	local parts = #stubs.sent
+	assert(parts > 1)
+	for _ = 1, parts do
+		Chat(ns, "CHAT_MSG_SYSTEM", { text = NOT_FOUND, name = "" })
+	end
+	Equal(#ns.Store.GetNotices(NOVA), parts)
+end)
+
+Test("an offline Battle.net friend marks the whisper as not delivered", function()
+	local ns = Boot(Database({}))
+	ns.Identity.AccountIdForTag = function() return 7 end
+	ns.Identity.BattleTag = function() return "Nova#1234" end
+	ns.Store.Ensure("B:Nova#1234", { name = "Nova#1234" })
+	ns.Send.Text("B:Nova#1234", "hey")
+	Chat(ns, "CHAT_MSG_BN_WHISPER_PLAYER_OFFLINE", { text = "", name = "", bn = 7 })
+	Equal(ns.Store.GetNotices("B:Nova#1234")[1].text, "hey")
+end)
+
+Test("secret status events are skipped without creating restricted rows", function()
+	local ns = BootWithChat()
+	Chat(ns, "CHAT_MSG_SYSTEM", { text = stubs.Secret(), name = "" })
+	Chat(ns, "CHAT_MSG_AFK", { text = stubs.Secret(), name = stubs.Secret() })
+	Equal(next(ns.session.live), nil)
+	Equal(next(ns.session.notices), nil)
+end)
+
+Test("away and busy replies show in the chat without counting as unread", function()
+	local ns = BootWithChat()
+	Chat(ns, "CHAT_MSG_AFK", { text = "back soon", name = "Nova Reed" })
+	Chat(ns, "CHAT_MSG_DND", { text = "", name = "Nova Reed" })
+	local notices = ns.Store.GetNotices(NOVA)
+	Equal(notices[1].text, "Nova Reed is away: back soon")
+	Equal(notices[2].text, "Nova Reed doesn't want to be disturbed.")
+	Equal(ns.Store.UnreadCount(NOVA, ns.Store.Get(NOVA)), 0)
+	Equal(#ns.Store.Get(NOVA).m, 0)
+end)
+
+Test("a repeated auto-reply moves down instead of piling up", function()
+	local ns = BootWithChat()
+	Chat(ns, "CHAT_MSG_WHISPER_INFORM", { text = "one", name = "Nova Reed" })
+	Chat(ns, "CHAT_MSG_AFK", { text = "back soon", name = "Nova Reed" })
+	stubs.serverTime = stubs.serverTime + 5
+	Chat(ns, "CHAT_MSG_WHISPER_INFORM", { text = "two", name = "Nova Reed" })
+	Chat(ns, "CHAT_MSG_AFK", { text = "back soon", name = "Nova Reed" })
+	Equal(ElementKinds(ns, NOVA), "message,message,notice")
+end)
+
+Test("an auto-reply that beats the whisper's echo still finds its chat", function()
+	local ns = Boot(Database({}))
+	Chat(ns, "CHAT_MSG_AFK", { text = "back soon", name = "Ada Vale" })
+	Chat(ns, "CHAT_MSG_WHISPER_INFORM", { text = "hi", name = "Ada Vale" })
+	Equal(ElementKinds(ns, "W:Ada Vale"), "message,notice")
+end)
+
+Test("notices are slotted between messages by time", function()
+	local ns = BootWithChat()
+	Chat(ns, "CHAT_MSG_WHISPER_INFORM", { text = "first", name = "Nova Reed" })
+	stubs.serverTime = stubs.serverTime + 5
+	ns.Store.AddNotice(NOVA, { kind = "failed", t = stubs.serverTime, text = "lost" })
+	stubs.serverTime = stubs.serverTime + 5
+	Chat(ns, "CHAT_MSG_WHISPER", { text = "second", name = "Nova Reed" })
+	Equal(ElementKinds(ns, NOVA), "message,failed,message")
+end)
+
+Test("deleting a chat forgets its notices", function()
+	local ns = BootWithChat()
+	ns.Store.AddNotice(NOVA, { kind = "failed", t = 1, text = "lost" })
+	ns.Store.Delete(NOVA)
+	Equal(ns.Store.GetNotices(NOVA), nil)
+end)
+
+local function Linked(url)
+	return "|cffabcdef|Hhangouturl:" .. url .. "|h" .. url .. "|h|r"
+end
+
+Test("web addresses become links and leave sentence punctuation outside", function()
+	local ns = Load()
+	local decorate = function(text) return ns.Links.Decorate(text, "abcdef") end
+	Equal(decorate("no address here"), "no address here")
+	Equal(decorate("see https://example.com/a?b=1, ok"), "see " .. Linked("https://example.com/a?b=1") .. ", ok")
+	Equal(decorate("(http://example.com)."), "(" .. Linked("http://example.com") .. ").")
+	Equal(decorate("www.example.de!"), Linked("www.example.de") .. "!")
+	Equal(decorate("join discord.gg/abc"), "join " .. Linked("discord.gg/abc"))
+	Equal(decorate("wiki https://x.org/Name_(game)"), "wiki " .. Linked("https://x.org/Name_(game)"))
+	Equal(decorate("\226\128\158https://x.org\226\128\156"), "\226\128\158" .. Linked("https://x.org") .. "\226\128\156")
+	Equal(decorate("file://"), "file://")
+	Equal(decorate("www.example"), "www.example")
+end)
+
+Test("web addresses inside game links and textures are left alone", function()
+	local ns = Load()
+	local item = "|cff0070dd|Hitem:1:https://x.org|h[https://x.org]|h|r"
+	Equal(ns.Links.Decorate(item, "abcdef"), item)
+	local texture = "|Thttps://x.org:0|t"
+	Equal(ns.Links.Decorate(texture, "abcdef"), texture)
+	Equal(ns.Links.Decorate(item .. " https://y.org", "abcdef"), item .. " " .. Linked("https://y.org"))
+end)
+
+Test("a shortcode inside a web address is not turned into an emoji", function()
+	local ns = Boot(Database({}))
+	local shown = ns.Links.Display("https://x.org/:smile:/a")
+	assert(shown:find("https://x.org/:smile:/a|h", 1, true))
+	assert(not shown:find("|T", 1, true))
+end)
+
+Test("the link click target can be read back", function()
+	local ns = Load()
+	Equal(ns.Links.UrlFrom("hangouturl:https://x.org/a:b"), "https://x.org/a:b")
+	Equal(ns.Links.UrlFrom("item:123"), nil)
+end)
+
+Test("case folding covers umlauts and leaves other characters alone", function()
+	local ns = Load()
+	Equal(ns.Util.Lower("ÄÖÜ Straße É"), "äöü straße é")
+	Equal(ns.Util.Upper("äöü é"), "ÄÖÜ É")
+	Equal(ns.Util.Lower("a×b"), "a×b")
+	Equal(ns.Util.Upper("a÷b"), "A÷B")
+end)
+
+Test("keywords, rules and search ignore the case of umlauts", function()
+	local ns = Boot(Database({}))
+	ns.Alerts.SetKeywords("Ärger")
+	assert(ns.Alerts.IsMention("kein ärger bitte"))
+	assert(ns.Alerts.IsMention("KEIN ÄRGER"))
+
+	ns.Set("blockWords", { "Übel" }) -- as saved by an older version
+	assert(ns.Filter.BlocksChannel("Ada Vale", "das ist übel", 1))
+	ns.Filter.BlockPlayer("Ärik Vale")
+	assert(ns.Filter.BlocksWhisper("ärik vale", "hi", false))
+
+	Equal(ns.Search.ParseQuery("ÄPFEL").needle, "äpfel")
+	Equal(ns.Search.Highlight("Äpfel", "äpfel", "ffffff"), "|cffffffffÄpfel|r")
+end)
+
+Test("a typed name with umlauts finds or starts the same chat", function()
+	local ns = Boot(Database({}))
+	Equal(ns.Store.StartWhisper("ärik vale"), "W:Ärik Vale")
+	Equal(ns.Store.StartWhisper("ÄRIK VALE"), "W:Ärik Vale")
+end)
+
+Test("name completion matches umlauts in either case", function()
+	local ns = Load()
+	local conv = { name = "Ärik Vale", m = {} }
+	Equal(ns.Complete.Names(conv, "ä")[1], "Ärik Vale")
+end)
+
+Test("dates and the sidebar preview follow the German locale", function()
+	stubs.Install()
+	stubs.locale = "deDE"
+	local ns = {}
+	for _, path in ipairs(TocFiles()) do
+		assert(loadfile(path))("Hangout", ns)
+	end
+	HangoutDB = Database({})
+	stubs.frames[1].OnEvent(stubs.frames[1], "ADDON_LOADED", "Hangout")
+	stubs.frames[1].OnEvent(stubs.frames[1], "PLAYER_LOGIN")
+
+	local now = 86400 * 400
+	Equal(ns.Util.ShortTime(now - 86400 * 3, now), "8. Nov")
+	Equal(ns.MessageList.DayLabel(now - 86400 * 3, now), "8. November")
+	Equal(ns.MessageList.DayLabel(now - 86400 * 200, now), "8. November 1970")
+
+	ns.Store.Add(NOVA, { name = "Nova Reed" }, { t = 10, x = "hallo", o = 1 })
+	Equal(ns.Store.LastActivity(NOVA, ns.Store.Get(NOVA)), "Du: hallo")
+end)
+
 local failures = 0
 for _, test in ipairs(tests) do
 	local ok, err = xpcall(test.fn, debug.traceback)

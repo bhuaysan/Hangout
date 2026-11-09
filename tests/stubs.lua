@@ -170,6 +170,7 @@ function stubs.Install()
 	_G.GetClassInfo = function(classID)
 		if classID == 7 then return "Schamane", "SHAMAN", 7 end
 	end
+	_G.ERR_CHAT_PLAYER_NOT_FOUND_S = "No player named '%s' is currently playing."
 	_G.print = function(text) stubs.printed[#stubs.printed + 1] = text end
 	_G.date = function(format, time)
 		if format == "%Y-%m-%d" then
@@ -178,8 +179,7 @@ function stubs.Install()
 		if format == "%Y-%m-%d %H:%M" then
 			return "day" .. math.floor((time or 0) / SECONDS_PER_DAY) .. " 12:00"
 		end
-		if format == "%B " then return "November " end
-		if format == "%b " then return "Nov " end
+		if format == "%m" then return "11" end
 		if format == "%d" then return "08" end
 		if format == "%Y" then
 			return tostring(1970 + math.floor((time or 0) / (SECONDS_PER_DAY * 365)))

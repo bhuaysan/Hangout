@@ -13,6 +13,8 @@ Capture.FLAG_GM = 1
 
 local RECOVERY_DELAY = 1
 
+local AWAY_TEXT_CHARS = 120
+
 local LOCKED_META = { name = L["During restriction"] }
 
 local ROUTES = {
@@ -30,6 +32,12 @@ local ROUTES = {
 	CHAT_MSG_INSTANCE_CHAT = { kind = "group", key = "I:instance", label = L["Instance"] },
 	CHAT_MSG_INSTANCE_CHAT_LEADER = { kind = "group", key = "I:instance", label = L["Instance"] },
 	CHAT_MSG_CHANNEL = { kind = "channel" },
+	-- Status events: readable ones become notices, secret ones are simply skipped.
+	CHAT_MSG_SYSTEM = { kind = "system", status = true },
+	CHAT_MSG_BN_WHISPER_PLAYER_OFFLINE = { kind = "bnetOffline", status = true },
+	CHAT_MSG_AFK = { kind = "away", status = true, withText = L["%s is away: %s"], plain = L["%s is away."] },
+	CHAT_MSG_DND = { kind = "away", status = true, withText = L["%s doesn't want to be disturbed: %s"],
+		plain = L["%s doesn't want to be disturbed."] },
 }
 
 local function ChannelKey(channelName, channelBaseName)
@@ -166,13 +174,43 @@ local function HandleReadable(route, text, playerName, channelName, specialFlags
 	end
 end
 
+-- The other side's auto-reply. It can arrive before the echo of the whisper
+-- that caused it, so the chat may not exist yet.
+local function HandleAway(route, text, playerName)
+	local name = ns.Util.NormalizeName(playerName)
+	if not name then return end
+	local key = "W:" .. name
+	local conv = ns.Store.Ensure(key, { name = name })
+	local label = ns.Store.LabelFor(key, conv)
+	ns.Store.AddNotice(key, {
+		kind = "away",
+		t = GetServerTime(),
+		text = text ~= "" and route.withText:format(label, ns.Util.Truncate(text, AWAY_TEXT_CHARS)) or route.plain:format(label),
+	})
+end
+
+local function HandleStatus(route, text, playerName, bnSenderID)
+	if route.kind == "system" then
+		ns.Send.OnSystemMessage(text)
+	elseif route.kind == "bnetOffline" then
+		local tag = bnSenderID and ns.Identity.BattleTag(bnSenderID)
+		if tag then ns.Send.OnDeliveryFailed("B:" .. tag) end
+	else
+		HandleAway(route, text, playerName)
+	end
+end
+
 local function OnChatEvent(_, event, text, playerName, _, channelName, _, specialFlags, _, channelIndex, channelBaseName, _, lineID, guid, bnSenderID)
 	local route = ROUTES[event]
 	if not route then return end
 
 	if canaccessvalue(text) and canaccessvalue(playerName) and canaccessvalue(guid) and canaccessvalue(bnSenderID) then
+		if route.status then
+			HandleStatus(route, text or "", playerName, bnSenderID)
+			return
+		end
 		HandleReadable(route, text, playerName, channelName, specialFlags, channelIndex, channelBaseName, guid, bnSenderID)
-	else
+	elseif not route.status then
 		HandleLocked(event, route, text, playerName, channelName, channelBaseName, lineID, specialFlags)
 	end
 end
