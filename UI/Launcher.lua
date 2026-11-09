@@ -134,6 +134,8 @@ end
 
 BINDING_NAME_HANGOUT_TOGGLE = "Open or close Hangout"
 BINDING_NAME_HANGOUT_REPLY = "Reply to the newest message"
+BINDING_NAME_HANGOUT_NEXT_UNREAD = "Open the next unread chat"
+BINDING_NAME_HANGOUT_QUICK_SWITCH = "Quick switch to a chat"
 
 function Hangout_Toggle()
 	ns.Window.Toggle()
@@ -141,6 +143,17 @@ end
 
 function Hangout_Reply()
 	ns.Window.Reply()
+end
+
+-- With nothing unread the keypress is quiet, except that it still brings up a closed window.
+function Hangout_NextUnread()
+	if not ns.Keys.StepChat(1, true) and not ns.Window.IsVisible() then
+		ns.Window.Open()
+	end
+end
+
+function Hangout_QuickSwitch()
+	ns.QuickSwitch.Toggle()
 end
 
 function Hangout_OnCompartmentClick()

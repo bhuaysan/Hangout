@@ -201,6 +201,7 @@ local function Create()
 		-- Hidden but still "shown" means the whole UI went away, as with Alt-Z.
 		hiddenWithUI = frame:IsShown()
 		UpdateActive()
+		ns.Fire("WINDOW_HIDDEN")
 	end)
 	frame:SetScript("OnShow", function()
 		ns.Glance.Hide()

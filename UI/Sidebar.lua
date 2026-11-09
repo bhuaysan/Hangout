@@ -87,34 +87,48 @@ local function BuildSearchElements(list, query, results)
 	return elements
 end
 
--- list comes from Store.List, so rows keep their most-recent-first order.
+-- The sidebar's grouping without any row data: { { label =, entries = {...} }, ... } in
+-- visual order. list comes from Store.List, so entries keep their most-recent-first order.
+-- Keyboard navigation uses this too, so "next chat" matches what the player sees.
+function Sidebar.Groups(list)
+	local pinned = { label = "PINNED", entries = {} }
+	local requests = { label = "REQUESTS", entries = {} }
+	for _, entry in ipairs(list) do
+		if entry.conv.req then
+			requests.entries[#requests.entries + 1] = entry
+		elseif entry.conv.pin then
+			pinned.entries[#pinned.entries + 1] = entry
+		end
+	end
+
+	local groups = { pinned }
+	for _, section in ipairs(SECTIONS) do
+		local group = { label = section.label, entries = {} }
+		for _, entry in ipairs(list) do
+			if not entry.conv.pin and not entry.conv.req
+				and section.prefixes:find(entry.key:sub(1, 1), 1, true) then
+				group.entries[#group.entries + 1] = entry
+			end
+		end
+		groups[#groups + 1] = group
+	end
+	groups[#groups + 1] = requests
+	return groups
+end
+
 function Sidebar.BuildElements(list, query, results)
 	if query and query ~= "" then
 		return BuildSearchElements(list, query, results)
 	end
 
 	local elements = {}
-	local pinned, requests = {}, {}
-	for _, entry in ipairs(list) do
-		if entry.conv.req then
-			requests[#requests + 1] = RowFor(entry)
-		elseif entry.conv.pin then
-			pinned[#pinned + 1] = RowFor(entry)
-		end
-	end
-	AddSection(elements, "PINNED", pinned)
-
-	for _, section in ipairs(SECTIONS) do
+	for _, group in ipairs(Sidebar.Groups(list)) do
 		local rows = {}
-		for _, entry in ipairs(list) do
-			if not entry.conv.pin and not entry.conv.req
-				and section.prefixes:find(entry.key:sub(1, 1), 1, true) then
-				rows[#rows + 1] = RowFor(entry)
-			end
+		for _, entry in ipairs(group.entries) do
+			rows[#rows + 1] = RowFor(entry)
 		end
-		AddSection(elements, section.label, rows)
+		AddSection(elements, group.label, rows)
 	end
-	AddSection(elements, "REQUESTS", requests)
 	return elements
 end
 
