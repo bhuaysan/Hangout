@@ -3284,6 +3284,91 @@ Test("QuickSwitch offers a new whisper only for an unknown two-word name", funct
 	Equal(ns.QuickSwitch.Results(list, "mara")[1].key, "W:Mara Stone")
 end)
 
+Test("quiet mode evaluates instance and raid combat rules", function()
+	local ns = Boot()
+	local both = { quietInInstance = true, quietInRaidCombat = true }
+	Equal(ns.Quiet.Evaluate(true, "party", false, false, both), "instance")
+	Equal(ns.Quiet.Evaluate(true, "arena", false, false, both), "instance")
+	Equal(ns.Quiet.Evaluate(false, "none", false, false, both), nil)
+	Equal(ns.Quiet.Evaluate(false, "none", true, false, both), nil, "combat outside a raid")
+	Equal(ns.Quiet.Evaluate(false, "none", true, true, both), "raidCombat")
+	Equal(ns.Quiet.Evaluate(false, "none", false, true, both), nil, "raid without combat")
+	Equal(ns.Quiet.Evaluate(true, "party", false, false, {}), nil, "settings off")
+end)
+
+Test("automatic quiet silences alerts like Do Not Disturb", function()
+	local ns = Boot()
+	local conv = Conversation({ Message(1) })
+	Equal(ns.Alerts.Decide("W:A B", conv, false) ~= nil, true)
+	stubs.inInstance, stubs.instanceType = true, "raid"
+	Equal(ns.Alerts.Decide("W:A B", conv, false) ~= nil, true, "setting off")
+	ns.Set("quietInInstance", true)
+	Equal(ns.Alerts.Decide("W:A B", conv, false), nil)
+	Equal(ns.Quiet.Reason(), "instance")
+	stubs.inInstance, stubs.instanceType = false, "none"
+	Equal(ns.Alerts.Decide("W:A B", conv, false) ~= nil, true, "left the instance")
+end)
+
+Test("quiet changes are announced once and shown in the status label", function()
+	local ns = Boot()
+	local seen, count = {}, 0
+	ns.On("QUIET_CHANGED", function(reason) count = count + 1; seen[count] = reason end)
+	ns.Set("quietInRaidCombat", true)
+	stubs.inRaid = true
+	local frame
+	for _, candidate in ipairs(stubs.frames) do
+		if candidate.events and candidate.events.ZONE_CHANGED_NEW_AREA then frame = candidate end
+	end
+	frame.OnEvent(frame, "PLAYER_REGEN_DISABLED")
+	frame.OnEvent(frame, "GROUP_ROSTER_UPDATE")
+	Equal(count, 1)
+	Equal(seen[1], "raidCombat")
+	Equal(ns.ProfileBar.StatusLabel("online", "raidCombat"), "Quiet \194\183 raid combat")
+	Equal(ns.ProfileBar.StatusLabel("dnd", "raidCombat"), "Do Not Disturb")
+	Equal(ns.ProfileBar.StatusLabel("afk", "instance"), "AFK")
+	frame.OnEvent(frame, "PLAYER_REGEN_ENABLED")
+	Equal(count, 2)
+	Equal(seen[2], nil)
+end)
+
+Test("the broker text shows unread count and silence state", function()
+	local ns = Boot()
+	Equal(ns.Broker.Text(0, false, false), "0")
+	Equal(ns.Broker.Text(3, true, false), "3 (DND)")
+	Equal(ns.Broker.Text(3, false, true), "3 (Quiet)")
+	Equal(ns.Broker.Text(150, false, false), "99+")
+end)
+
+Test("the broker tooltip lists up to five unread chats and skips requests", function()
+	local ns = Boot()
+	Equal(#ns.Broker.TooltipLines({}), 0)
+	local list = {}
+	for index = 1, 7 do
+		list[#list + 1] = { key = "W:P" .. index, conv = Conversation({}, { name = "P" .. index, unread = index == 2 and 0 or index }) }
+	end
+	list[1].conv.req = true
+	local lines = ns.Broker.TooltipLines(list)
+	Equal(#lines, 5)
+	Equal(lines[1].name, "P3")
+	Equal(lines[1].count, 3)
+end)
+
+Test("the broker does nothing without LibDataBroker", function()
+	local ns = Boot()
+	Equal(ns.Broker.Init(), false)
+end)
+
+Test("the broker creates a launcher object when the library exists", function()
+	local created
+	local ns = Boot()
+	_G.LibStub = { GetLibrary = function() return { NewDataObject = function(_, name, object) created = object; created.name = name; return object end } end }
+	local ok = ns.Broker.Init()
+	_G.LibStub = nil
+	Equal(ok, true)
+	Equal(created.name, "Hangout")
+	Equal(created.type, "launcher")
+end)
+
 local failures = 0
 for _, test in ipairs(tests) do
 	local ok, err = xpcall(test.fn, debug.traceback)

@@ -66,14 +66,23 @@ function ProfileBar.SyncFromGame()
 	end
 end
 
+-- AFK and Do Not Disturb win over automatic quiet mode, which only replaces "Online".
+function ProfileBar.StatusLabel(status, quietReason)
+	if status == "online" and quietReason then
+		return "Quiet \194\183 " .. ns.Quiet.Label(quietReason)
+	end
+	return STATUSES[status].label
+end
+
 local function Refresh()
 	if not bar then return end
-	local status = STATUSES[ProfileBar.CurrentStatus()]
+	local current = ProfileBar.CurrentStatus()
+	local status = STATUSES[current]
 	ns.Widgets.SetClassCrest(crest, ns.myClass)
 	statusDot:SetTexture(status.icon)
 	nameText:SetText(ns.Util.DisplayName(ns.me or ""))
 	nameText:SetTextColor(ns.Theme.ClassColor(ns.myClass, "sidebar", "dock"))
-	statusText:SetText(status.label)
+	statusText:SetText(ProfileBar.StatusLabel(current, ns.Quiet.Reason()))
 end
 
 local function ShowStatusMenu(owner)
@@ -165,6 +174,7 @@ function ProfileBar.SetCollapsed(isCollapsed)
 end
 
 ns.On("DND_CHANGED", Refresh)
+ns.On("QUIET_CHANGED", Refresh)
 ns.On("THEME_CHANGED", Refresh)
 
 -- Catches /afk and /dnd typed in chat and the game marking the player idle.

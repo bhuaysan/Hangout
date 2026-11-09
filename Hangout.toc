@@ -15,7 +15,9 @@ Core\Identity.lua
 Core\Lockdown.lua
 Core\Capture.lua
 Core\Send.lua
+Features\Quiet.lua
 Features\Alerts.lua
+Features\Broker.lua
 Features\EmojiData.lua
 Features\Emoji.lua
 Features\Filter.lua
