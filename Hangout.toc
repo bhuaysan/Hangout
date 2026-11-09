@@ -1,7 +1,7 @@
 ## Interface: 16001
 ## Title: Hangout
 ## Notes: A modern, simple overview of your whispers and chat channels.
-## Version: 1.2.1
+## Version: 1.2.2
 ## SavedVariables: HangoutDB
 ## IconTexture: Interface\AddOns\Hangout\Media\icon.png
 ## AddonCompartmentFunc: Hangout_OnCompartmentClick
