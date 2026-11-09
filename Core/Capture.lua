@@ -119,7 +119,7 @@ end
 local function HandleBattleNet(route, text, bnSenderID, isGM)
 	local tag = bnSenderID and ns.Identity.BattleTag(bnSenderID)
 	local key = tag and ("B:" .. tag) or ("B:?" .. tostring(bnSenderID))
-	ns.Store.Add(key, { name = tag or "Battle.net friend" }, {
+	ns.Store.Add(key, { name = tag or "Battle.net friend", class = tag and ns.Identity.ClassForTag(tag) }, {
 		t = GetServerTime(),
 		x = text,
 		o = route.out and 1 or nil,

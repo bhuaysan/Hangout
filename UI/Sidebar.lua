@@ -50,7 +50,7 @@ local function RowFor(entry)
 		muted = entry.conv.mute,
 		note = entry.conv.note,
 		unread = ns.Store.UnreadCount(entry.key, entry.conv),
-		presence = ns.Identity.Presence(entry.key),
+		status = ns.Identity.Status(entry.key),
 	}
 end
 

@@ -513,10 +513,12 @@ end)
 
 Test("the header line says what is known about a person", function()
 	local ns = Boot()
-	ns.Identity.Presence = function() return true end
+	ns.Identity.Status = function() return "online" end
 	Equal(ns.Window.SubtitleFor("W:A B", { class = "SHAMAN" }), "Online  ·  Schamane")
 	Equal(ns.Window.SubtitleFor("W:A B", { class = "SHAMAN", note = "healer" }), "Online  ·  Schamane  ·  healer")
-	ns.Identity.Presence = function() return nil end
+	ns.Identity.Status = function() return "afk" end
+	Equal(ns.Window.SubtitleFor("W:A B", {}), "AFK")
+	ns.Identity.Status = function() return nil end
 	Equal(ns.Window.SubtitleFor("W:A B", {}), "")
 end)
 
@@ -864,6 +866,123 @@ Test("presence combines friends, guild and Battle.net", function()
 	Equal(ns.Identity.Presence("B:Pal#5678"), true)
 	Equal(ns.Identity.Presence("W:Stranger Here"), nil)
 	Equal(ns.Identity.Presence("G:X-R"), nil)
+end)
+
+local function RescanPresence()
+	for _, frame in ipairs(stubs.frames) do
+		if frame.events.FRIENDLIST_UPDATE then frame.OnEvent(frame) end
+	end
+end
+
+local function BattleNetFriend(account, game)
+	account.battleTag = account.battleTag or "Pal#5678"
+	account.bnetAccountID = 55
+	game.isOnline = game.isOnline ~= false
+	account.gameAccountInfo = game
+	stubs.bnetFriends = { account }
+end
+
+Test("a Battle.net friend's status follows the account and the game", function()
+	local ns = Boot()
+	local cases = {
+		{ {}, {}, "online" },
+		{ { isAFK = true }, {}, "afk" },
+		{ {}, { isGameAFK = true }, "afk" },
+		{ { isDND = true }, {}, "dnd" },
+		{ {}, { isGameBusy = true }, "dnd" },
+		{ { isAFK = true }, { isOnline = false }, "offline" },
+		{ { isAFK = stubs.Secret() }, { isGameBusy = stubs.Secret() }, "online" },
+	}
+	for _, case in ipairs(cases) do
+		BattleNetFriend(case[1], case[2])
+		RescanPresence()
+		Equal(ns.Identity.Status("B:Pal#5678"), case[3])
+	end
+	Equal(ns.Identity.Presence("B:Pal#5678"), true, "away still counts as online")
+end)
+
+Test("friends and guild members show AFK and busy too", function()
+	local ns = Boot()
+	stubs.friends = { { name = "Fri End", connected = true, afk = true },
+		{ name = "Bus Y", connected = true, dnd = true } }
+	stubs.guildRoster = { { name = "Guild Afk", online = true, status = 1 },
+		{ name = "Guild Busy", online = true, status = 2 },
+		{ name = "Guild Off", online = false, status = 1 } }
+	RescanPresence()
+	Equal(ns.Identity.Status("W:Fri End"), "afk")
+	Equal(ns.Identity.Status("W:Bus Y"), "dnd")
+	Equal(ns.Identity.Status("W:Guild Afk"), "afk")
+	Equal(ns.Identity.Status("W:Guild Busy"), "dnd")
+	Equal(ns.Identity.Status("W:Guild Off"), "offline")
+end)
+
+Test("a Battle.net chat keeps the class its friend was last seen playing", function()
+	local ns = Boot()
+	ns.Store.Ensure("B:Pal#5678", { name = "Pal#5678" })
+	BattleNetFriend({}, { clientProgram = "WoW", classFilename = "SHAMAN" })
+	RescanPresence()
+	Equal(ns.Store.Get("B:Pal#5678").class, "SHAMAN")
+
+	BattleNetFriend({}, { clientProgram = "App", isOnline = false })
+	RescanPresence()
+	Equal(ns.Store.Get("B:Pal#5678").class, "SHAMAN")
+end)
+
+Test("a Battle.net friend's class falls back to the class ID and ignores unusable values", function()
+	local ns = Boot()
+	ns.Store.Ensure("B:Pal#5678", { name = "Pal#5678" })
+	BattleNetFriend({}, { clientProgram = "WoW", classFilename = stubs.Secret(), classID = 7 })
+	RescanPresence()
+	Equal(ns.Store.Get("B:Pal#5678").class, "SHAMAN")
+
+	ns.Store.Get("B:Pal#5678").class = nil
+	BattleNetFriend({}, { clientProgram = "WoW", classFilename = "NOT_A_CLASS" })
+	RescanPresence()
+	Equal(ns.Store.Get("B:Pal#5678").class, nil)
+	BattleNetFriend({}, { clientProgram = "Pro", classFilename = "SHAMAN" })
+	RescanPresence()
+	Equal(ns.Store.Get("B:Pal#5678").class, nil, "only WoW has classes")
+end)
+
+Test("a new Battle.net chat starts with the friend's class", function()
+	local ns = Boot()
+	stubs.bnetTags[55] = "Pal#5678"
+	BattleNetFriend({}, { clientProgram = "WoW", classFilename = "SHAMAN" })
+	RescanPresence()
+	Chat(ns, "CHAT_MSG_BN_WHISPER", { text = "hi", bn = 55 })
+	Equal(ns.Store.Get("B:Pal#5678").class, "SHAMAN")
+end)
+
+Test("an avatar shows the Battle.net friends icon only for Battle.net friends without a class", function()
+	local ns = Boot()
+	local function Avatar()
+		local avatar = {}
+		for _, part in ipairs({ "crest", "slot", "icon", "letter", "status" }) do
+			avatar[part] = {
+				SetShown = function(self, shown) self.shown = shown end,
+				SetTexture = function(self, path) self.path = path end,
+				SetTexCoord = function() end, SetDesaturated = function() end,
+				SetText = function() end, ClearAllPoints = function() end, SetPoint = function() end,
+			}
+		end
+		return avatar
+	end
+
+	local avatar = Avatar()
+	ns.Widgets.ShowChatAvatar(avatar, { key = "B:Pal#5678", label = "Pal", status = "afk" })
+	assert(avatar.crest.path:find("Battlenet%-Portrait"), "uses the Battle.net friends icon")
+	Equal(avatar.crest.shown, true)
+	Equal(avatar.letter.shown, false)
+	assert(avatar.status.path:find("StatusIcon%-Away"), "shows the away dot")
+
+	avatar = Avatar()
+	ns.Widgets.ShowChatAvatar(avatar, { key = "B:Pal#5678", label = "Pal", class = "SHAMAN" })
+	assert(avatar.crest.path:find("UI%-CharacterCreate%-Classes"), "a known class wins")
+
+	avatar = Avatar()
+	ns.Widgets.ShowChatAvatar(avatar, { key = "W:Some One", label = "Some One" })
+	Equal(avatar.crest.shown, false)
+	Equal(avatar.letter.shown, true)
 end)
 
 Test("secret presence data is skipped safely", function()

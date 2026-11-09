@@ -260,6 +260,13 @@ local function UpdateRestriction()
 	refreshAfterResize()
 end
 
+local STATUS_LABEL = {
+	online = "Online",
+	afk = "AFK",
+	dnd = "Do Not Disturb",
+	offline = "Offline",
+}
+
 -- The small line under a chat's name.
 function Window.SubtitleFor(key, conv)
 	if ns.Protocol.IsTyping(key) then return "typing..." end
@@ -269,8 +276,8 @@ function Window.SubtitleFor(key, conv)
 	if category == "channel" then return "Channel" end
 
 	local parts = {}
-	local presence = ns.Identity.Presence(key)
-	if presence ~= nil then parts[#parts + 1] = presence and "Online" or "Offline" end
+	local status = ns.Identity.Status(key)
+	if status then parts[#parts + 1] = STATUS_LABEL[status] end
 	local className = conv.class and LOCALIZED_CLASS_NAMES_MALE[conv.class]
 	if className then parts[#parts + 1] = className end
 	if conv.note then parts[#parts + 1] = conv.note end
@@ -321,7 +328,7 @@ local function UpdateTitle()
 		key = ns.selectedKey,
 		class = conv.class,
 		label = ns.Store.LabelFor(ns.selectedKey, conv),
-		presence = ns.Identity.Presence(ns.selectedKey),
+		status = ns.Identity.Status(ns.selectedKey),
 		muted = conv.mute,
 	} or nil)
 

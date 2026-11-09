@@ -106,7 +106,7 @@ function stubs.Install()
 	_G.GetNumGuildMembers = function() return #stubs.guildRoster end
 	_G.GetGuildRosterInfo = function(index)
 		local member = stubs.guildRoster[index]
-		return member.name, nil, nil, nil, nil, nil, nil, nil, member.online
+		return member.name, nil, nil, nil, nil, nil, nil, nil, member.online, member.status
 	end
 	_G.GetGuildInfo = function() return stubs.guildName end
 	_G.GetChannelName = function(index)
@@ -118,6 +118,9 @@ function stubs.Install()
 		if guid == "Player-1-ABC" then return "Shaman", "SHAMAN" end
 	end
 	_G.BNGetNumFriends = function() return #stubs.bnetFriends end
+	_G.GetClassInfo = function(classID)
+		if classID == 7 then return "Schamane", "SHAMAN", 7 end
+	end
 	_G.print = function(text) stubs.printed[#stubs.printed + 1] = text end
 	_G.date = function(format, time)
 		if format == "%Y-%m-%d" then

@@ -4,14 +4,30 @@ local Identity = {}
 ns.Identity = Identity
 
 local PRESENCE_DELAY = 1
-local GUILD_REQUEST_INTERVAL = 60
+local ROSTER_REQUEST_INTERVAL = 60
+local GUILD_STATUS_AFK = 1
+local GUILD_STATUS_DND = 2
 
 -- Session-only: Battle.net account IDs change between sessions.
 local accountIdByTag = {}
-local onlineByName = {}
-local onlineByTag = {}
+local statusByName = {}
+local statusByTag = {}
 local gameAccountByTag = {}
 local tagByGameAccount = {}
+-- Kept across rescans, so a friend who logs off keeps their last class.
+local classByTag = {}
+
+-- Any status flag can be secret during a chat restriction.
+local function IsSet(flag)
+	return canaccessvalue(flag) and flag and true or false
+end
+
+local function StatusFrom(isOnline, isAfk, isDnd)
+	if not isOnline then return "offline" end
+	if isAfk then return "afk" end
+	if isDnd then return "dnd" end
+	return "online"
+end
 
 -- Addon data only reaches friends currently playing this same game.
 local function RememberGameAccount(tag, game)
@@ -26,6 +42,26 @@ local function RememberGameAccount(tag, game)
 	end
 end
 
+-- Returns the class of the character a friend is playing, or nil outside WoW.
+local function ClassOfGame(game)
+	if not canaccessvalue(game.clientProgram) or game.clientProgram ~= BNET_CLIENT_WOW then
+		return nil
+	end
+	local token = canaccessvalue(game.classFilename) and game.classFilename or nil
+	if not token and canaccessvalue(game.classID) and game.classID then
+		token = select(2, GetClassInfo(game.classID))
+	end
+	return token and CLASS_ICON_TCOORDS[token] and token or nil
+end
+
+local function RememberClass(tag, game)
+	local class = ClassOfGame(game)
+	if not class then return end
+	classByTag[tag] = class
+	local conv = ns.Store.Get("B:" .. tag)
+	if conv then conv.class = class end
+end
+
 local function ScanBattleNet()
 	for index = 1, BNGetNumFriends() do
 		local info = C_BattleNet.GetFriendAccountInfo(index)
@@ -33,8 +69,11 @@ local function ScanBattleNet()
 			accountIdByTag[info.battleTag] = info.bnetAccountID
 			local game = info.gameAccountInfo
 			if game and canaccessvalue(game.isOnline) then
-				onlineByTag[info.battleTag] = game.isOnline
+				statusByTag[info.battleTag] = StatusFrom(game.isOnline,
+					IsSet(info.isAFK) or IsSet(game.isGameAFK),
+					IsSet(info.isDND) or IsSet(game.isGameBusy))
 				RememberGameAccount(info.battleTag, game)
+				RememberClass(info.battleTag, game)
 			end
 		end
 	end
@@ -42,10 +81,15 @@ end
 
 local function ScanGuild()
 	for index = 1, GetNumGuildMembers() do
-		local name, _, _, _, _, _, _, _, isOnline = GetGuildRosterInfo(index)
+		local name, _, _, _, _, _, _, _, isOnline, status = GetGuildRosterInfo(index)
 		if canaccessvalue(name) and canaccessvalue(isOnline) then
 			local normalized = ns.Util.NormalizeName(name)
-			if normalized then onlineByName[normalized] = isOnline and true or false end
+			if normalized then
+				local readable = canaccessvalue(status)
+				statusByName[normalized] = StatusFrom(isOnline,
+					readable and status == GUILD_STATUS_AFK,
+					readable and status == GUILD_STATUS_DND)
+			end
 		end
 	end
 end
@@ -55,14 +99,16 @@ local function ScanFriends()
 		local info = C_FriendList.GetFriendInfoByIndex(index)
 		if info and canaccessvalue(info.name) and canaccessvalue(info.connected) then
 			local normalized = ns.Util.NormalizeName(info.name)
-			if normalized then onlineByName[normalized] = info.connected end
+			if normalized then
+				statusByName[normalized] = StatusFrom(info.connected, IsSet(info.afk), IsSet(info.dnd))
+			end
 		end
 	end
 end
 
 local function RebuildPresence()
-	onlineByName = {}
-	onlineByTag = {}
+	statusByName = {}
+	statusByTag = {}
 	gameAccountByTag = {}
 	tagByGameAccount = {}
 	ScanGuild()
@@ -87,19 +133,34 @@ function Identity.Init()
 
 	C_FriendList.ShowFriends()
 	C_GuildInfo.GuildRoster()
-	C_Timer.NewTicker(GUILD_REQUEST_INTERVAL, function() C_GuildInfo.GuildRoster() end)
+	C_Timer.NewTicker(ROSTER_REQUEST_INTERVAL, function()
+		C_FriendList.ShowFriends()
+		C_GuildInfo.GuildRoster()
+	end)
 	rebuildSoon()
+end
+
+-- Returns "online", "afk", "dnd" or "offline", or nil for people Hangout has
+-- no information about.
+function Identity.Status(key)
+	local prefix = key:sub(1, 1)
+	if prefix == "W" then
+		return statusByName[key:sub(3)]
+	elseif prefix == "B" then
+		return statusByTag[key:sub(3)]
+	end
+	return nil
 end
 
 -- Returns true or false, or nil for people Hangout has no information about.
 function Identity.Presence(key)
-	local prefix = key:sub(1, 1)
-	if prefix == "W" then
-		return onlineByName[key:sub(3)]
-	elseif prefix == "B" then
-		return onlineByTag[key:sub(3)]
-	end
-	return nil
+	local status = Identity.Status(key)
+	if status == nil then return nil end
+	return status ~= "offline"
+end
+
+function Identity.ClassForTag(tag)
+	return classByTag[tag]
 end
 
 function Identity.GameAccountForTag(tag)
@@ -112,7 +173,7 @@ end
 
 -- True for people the player has a real connection to: friends, guild, group.
 function Identity.IsKnown(name, guid)
-	if name == ns.me or onlineByName[name] ~= nil then return true end
+	if name == ns.me or statusByName[name] ~= nil then return true end
 	if guid and guid ~= "" and (C_FriendList.IsFriend(guid) or IsGuildMember(guid)) then
 		return true
 	end

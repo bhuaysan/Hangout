@@ -29,9 +29,12 @@ local ICON_NAMES = {
 	"hash", "guild", "smile",
 }
 local STATUS_ICON = {
-	[true] = "Interface\\FriendsFrame\\StatusIcon-Online",
-	[false] = "Interface\\FriendsFrame\\StatusIcon-Offline",
+	online = "Interface\\FriendsFrame\\StatusIcon-Online",
+	afk = "Interface\\FriendsFrame\\StatusIcon-Away",
+	dnd = "Interface\\FriendsFrame\\StatusIcon-DnD",
+	offline = "Interface\\FriendsFrame\\StatusIcon-Offline",
 }
+local BATTLE_NET_CREST = "Interface\\FriendsFrame\\Battlenet-Portrait"
 local ICON_INDEX = {}
 for index, name in ipairs(ICON_NAMES) do
 	ICON_INDEX[name] = index
@@ -145,8 +148,9 @@ function Widgets.SetIconButtonActive(button, isActive)
 	PaintRegion(button.iconEntry)
 end
 
--- A chat's picture: its class crest, otherwise a first letter for a person or
--- an icon for a channel or group, with the online dot on the corner.
+-- A chat's picture: its class crest, otherwise the friends icon for a Battle.net
+-- friend, a first letter for a person or an icon for a channel or group, with the
+-- status dot on the corner.
 function Widgets.ChatAvatar(frame, size, iconSize)
 	local avatar = {}
 	avatar.crest = Widgets.ClassCrest(frame, size)
@@ -168,12 +172,16 @@ function Widgets.PlaceChatAvatar(avatar, ...)
 	avatar.slot:SetPoint(...)
 end
 
--- info: { key, class, label, presence, muted }, or nil to show nothing.
+-- info: { key, class, label, status, muted }, or nil to show nothing.
 function Widgets.ShowChatAvatar(avatar, info)
+	local prefix = info and info.key:sub(1, 1)
 	local hasCrest = Widgets.SetClassCrest(avatar.crest, info and info.class or nil)
+	if not hasCrest and prefix == "B" then
+		Widgets.SetBattleNetCrest(avatar.crest)
+		hasCrest = true
+	end
 	avatar.crest:SetDesaturated(hasCrest and info.muted and true or false)
 
-	local prefix = info and info.key:sub(1, 1)
 	local isPerson = prefix == "W" or prefix == "B" or prefix == "L"
 	local hasSlot = info ~= nil and not hasCrest
 	avatar.slot:SetShown(hasSlot)
@@ -185,10 +193,10 @@ function Widgets.ShowChatAvatar(avatar, info)
 		Widgets.SetIcon(avatar.icon, prefix == "C" and "hash" or "guild")
 	end
 
-	local hasStatus = info ~= nil and info.presence ~= nil
+	local hasStatus = info ~= nil and info.status ~= nil
 	avatar.status:SetShown(hasStatus)
 	if hasStatus then
-		avatar.status:SetTexture(STATUS_ICON[info.presence])
+		avatar.status:SetTexture(STATUS_ICON[info.status])
 		avatar.status:ClearAllPoints()
 		avatar.status:SetPoint("CENTER", hasCrest and avatar.crest or avatar.slot, "BOTTOMRIGHT", -2, 2)
 	end
@@ -233,6 +241,14 @@ function Widgets.SetClassCrest(texture, classToken)
 		texture:SetTexCoord(left + cropX, right - cropX, top + cropY, bottom - cropY)
 	end
 	return coords ~= nil
+end
+
+-- Shows the Battle.net friends icon for a friend whose class isn't known.
+function Widgets.SetBattleNetCrest(texture)
+	texture:SetTexture(BATTLE_NET_CREST)
+	texture:SetTexCoord(0, 1, 0, 1)
+	texture:SetShown(true)
+	if texture.ring then texture.ring:SetShown(true) end
 end
 
 -- A flat text button that lightens on hover.
