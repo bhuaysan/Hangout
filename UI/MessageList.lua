@@ -49,6 +49,16 @@ local REACTION_NAMES = {
 	sob = "Crying",
 }
 
+-- Link types GameTooltip can show. Names, URLs and the like have no tooltip.
+local TOOLTIP_LINKS = {
+	item = true, spell = true, enchant = true, quest = true, achievement = true,
+	talent = true, glyph = true, unit = true, currency = true, battlepet = true,
+	battlePetAbil = true, garrfollower = true, instancelock = true, keystone = true,
+	mount = true, transmogappearance = true, transmogillusion = true, transmogset = true,
+	azessence = true, conduit = true, api = true, dungeonScore = true,
+}
+local NAME_BUTTON_HEIGHT = 16
+
 local scrollBox, measure
 local visibleLimit = PAGE_SIZE
 local unreadAfterId
@@ -85,10 +95,30 @@ function MessageList.DayLabel(timestamp, now)
 	return label
 end
 
+-- The character a message came from, for the player menu. Outgoing messages
+-- are the player's own, and Battle.net chats have no character name.
+local function AuthorOf(message, conv, key)
+	if message.o == 1 then return nil end
+	if message.s then return message.s end
+	if key and key:sub(1, 2) ~= "W:" then return nil end
+	return conv.name
+end
+
+-- The whole chat as plain text, oldest first, for the clipboard.
+function MessageList.ConversationText(_, conv)
+	local lines = {}
+	for _, message in ipairs(conv.m) do
+		lines[#lines + 1] = "[" .. date("%Y-%m-%d %H:%M", message.t) .. "] " .. SenderOf(message, conv)
+			.. ": " .. ns.CopyBox.PlainText(message.x)
+	end
+	return table.concat(lines, "\n")
+end
+
 -- Turns stored messages into list rows: day separators, and messages that
 -- only show a header when the sender changes or time has passed.
--- unreadAfterId, if set, marks where "New messages" begins.
-function MessageList.BuildElements(conv, limit, live, unreadAfterId)
+-- unreadAfterId, if set, marks where "New messages" begins. key tells whisper
+-- chats from Battle.net ones; without it the conversation is taken as a whisper.
+function MessageList.BuildElements(conv, limit, live, unreadAfterId, key)
 	local elements = {}
 	local messages = conv.m
 	local first = math.max(1, #messages - limit + 1)
@@ -122,6 +152,8 @@ function MessageList.BuildElements(conv, limit, live, unreadAfterId)
 			outgoing = message.o == 1,
 			gm = message.f == ns.Capture.FLAG_GM,
 			sender = sender,
+			name = AuthorOf(message, conv, key),
+			raw = message.x,
 			class = ClassOf(message, conv),
 			mention = message.s ~= nil and message.o ~= 1 and ns.Alerts.IsMention(message.x),
 			reactions = ns.Protocol.ReactionList(message.r),
@@ -225,29 +257,131 @@ local function ExtentOf(_, element)
 		+ (element.reactions and REACTION_ROW_HEIGHT or 0)
 end
 
-local function OnHyperlinkClick(self, link, text, button)
-	SetItemRef(link, text, button, self)
+local function CopyConversation(key)
+	local conv = ns.Store.Get(key)
+	if not conv then return end
+	ns.CopyBox.Show("Conversation with " .. ns.Store.LabelFor(key, conv), MessageList.ConversationText(key, conv))
 end
 
-local function ShowReactionMenu(owner, messageId)
+local function ConfirmBlockPlayer(name)
+	ns.Prompt.Confirm("Block " .. ns.Util.DisplayName(name) .. "? Their messages won't appear in Hangout.",
+		"Block", function()
+			ns.Filter.BlockPlayer(name)
+			if ns.Store.Get("W:" .. name) then ns.Store.Delete("W:" .. name) end
+		end)
+end
+
+local function RunWho(name)
+	local filter = 'n-"' .. name .. '"'
+	if C_FriendList.SendWho then
+		C_FriendList.SendWho(filter)
+	elseif SendWho then
+		SendWho(filter)
+	end
+end
+
+local function IsWhisperWith(name)
+	return ns.selectedKey ~= nil and ns.selectedKey:lower() == ("W:" .. name):lower()
+end
+
+-- What can be done with another player, from their name or crest in a message.
+function MessageList.PlayerMenuItems(name)
+	local items = {}
+	local isMe = name == ns.me
+	if not isMe then
+		if not IsWhisperWith(name) then
+			items[#items + 1] = { label = "Whisper", action = function() ns.Window.Select(ns.Store.StartWhisper(name)) end }
+		end
+		items[#items + 1] = { label = "Invite to group", action = function() C_PartyInfo.InviteUnit(name) end }
+		items[#items + 1] = { label = "Add friend", action = function() C_FriendList.AddFriend(name) end }
+		items[#items + 1] = { label = "Who", action = function() RunWho(name) end }
+	end
+	items[#items + 1] = { label = "Copy name", action = function() ns.CopyBox.Show("Copy name", name) end }
+	if not isMe then
+		items[#items + 1] = { divider = true }
+		items[#items + 1] = { label = "Block", action = function() ConfirmBlockPlayer(name) end }
+	end
+	return items
+end
+
+local function ShowPlayerMenu(owner, name, class)
+	if not name then return end
 	MenuUtil.CreateContextMenu(owner, function(_, root)
-		root:CreateTitle("React")
-		for _, emoji in ipairs(ns.Protocol.QUICK_REACTIONS) do
-			local item = root:CreateCheckbox(ns.Emoji.Tag(emoji) .. "  " .. REACTION_NAMES[emoji],
-				function() return ns.Protocol.HasMyReaction(ns.selectedKey, messageId, emoji) end,
-				function() ns.Protocol.ToggleReaction(ns.selectedKey, messageId, emoji) end)
-			item:SetResponse(MenuResponse.CloseAll)
+		root:CreateTitle(ns.Util.DisplayName(name))
+		local className = class and LOCALIZED_CLASS_NAMES_MALE and LOCALIZED_CLASS_NAMES_MALE[class]
+		if className then root:CreateTitle(className) end
+		for _, item in ipairs(MessageList.PlayerMenuItems(name)) do
+			if item.divider then
+				root:CreateDivider()
+			else
+				root:CreateButton(item.label, item.action)
+			end
 		end
 	end)
 end
 
--- Says why instead of leaving a right-click with no response.
-local function ShowReactionsUnavailable(owner)
+-- Names in player: links open the same menu instead of the default chat's edit box.
+local function OnHyperlinkClick(self, link, text, button)
+	local playerName = link:match("^player:([^:]+)")
+	if playerName then
+		ShowPlayerMenu(self, ns.Util.NormalizeName(playerName))
+		return
+	end
+	SetItemRef(link, text, button, self)
+end
+
+local function OnHyperlinkEnter(self, link)
+	local linkType = link:match("^(.-):")
+	if not linkType or not TOOLTIP_LINKS[linkType] then return end
+	GameTooltip:SetOwner(self, "ANCHOR_CURSOR")
+	-- A malformed link must not break hovering the rest of the row.
+	if not pcall(GameTooltip.SetHyperlink, GameTooltip, link) then
+		GameTooltip:Hide()
+	end
+end
+
+local function OnHyperlinkLeave()
+	GameTooltip:Hide()
+end
+
+local function AddReactionItems(root, messageId)
+	root:CreateTitle("React")
+	for _, emoji in ipairs(ns.Protocol.QUICK_REACTIONS) do
+		local item = root:CreateCheckbox(ns.Emoji.Tag(emoji) .. "  " .. REACTION_NAMES[emoji],
+			function() return ns.Protocol.HasMyReaction(ns.selectedKey, messageId, emoji) end,
+			function() ns.Protocol.ToggleReaction(ns.selectedKey, messageId, emoji) end)
+		item:SetResponse(MenuResponse.CloseAll)
+	end
+end
+
+local function ShowReactionMenu(owner, messageId)
+	MenuUtil.CreateContextMenu(owner, function(_, root)
+		AddReactionItems(root, messageId)
+	end)
+end
+
+-- Says why instead of leaving the reactions out without a word.
+local function AddReactionsUnavailable(root)
 	local reason = ns.Lockdown.IsActive() and "Not available while chat is restricted"
 		or "Only works with other Hangout users"
+	root:CreateTitle("React")
+	root:CreateButton(reason):SetEnabled(false)
+end
+
+local function ShowMessageMenu(owner, element)
+	local key = ns.selectedKey
 	MenuUtil.CreateContextMenu(owner, function(_, root)
-		root:CreateTitle("React")
-		root:CreateButton(reason):SetEnabled(false)
+		if ns.Protocol.CanReact(key) then
+			AddReactionItems(root, element.id)
+			root:CreateDivider()
+		elseif IsWhisper(key) then
+			AddReactionsUnavailable(root)
+			root:CreateDivider()
+		end
+		root:CreateButton("Copy message", function()
+			ns.CopyBox.Show("Copy message", ns.CopyBox.PlainText(element.raw))
+		end)
+		root:CreateButton("Copy conversation", function() CopyConversation(key) end)
 	end)
 end
 
@@ -258,11 +392,7 @@ local function OnRowMouseUp(self, button)
 		visibleLimit = visibleLimit + PAGE_SIZE
 		MessageList.Refresh()
 	elseif element.kind == "message" and button == "RightButton" then
-		if ns.Protocol.CanReact(ns.selectedKey) then
-			ShowReactionMenu(self, element.id)
-		elseif IsWhisper(ns.selectedKey) then
-			ShowReactionsUnavailable(self)
-		end
+		ShowMessageMenu(self, element)
 	end
 end
 
@@ -379,6 +509,35 @@ local function OnRowLeave(self)
 	end
 end
 
+local function OnNameClick(self)
+	local row = self:GetParent()
+	local element = row.element
+	if element and element.name then
+		ShowPlayerMenu(self, element.name, element.class)
+	end
+end
+
+-- Stepping onto the button leaves the row, so the row's hover is kept up by hand.
+local function OnNameEnter(self)
+	OnRowEnter(self:GetParent())
+end
+
+local function OnNameLeave(self)
+	local row = self:GetParent()
+	if not row:IsMouseOver() then OnRowLeave(row) end
+end
+
+-- FontStrings and textures can't be clicked, so each gets a button over it.
+local function CreateNameButton(frame)
+	local button = CreateFrame("Button", nil, frame)
+	button:RegisterForClicks("LeftButtonUp", "RightButtonUp")
+	button:SetScript("OnClick", OnNameClick)
+	button:SetScript("OnEnter", OnNameEnter)
+	button:SetScript("OnLeave", OnNameLeave)
+	button:Hide()
+	return button
+end
+
 local function BuildRow(frame)
 	frame.crest = ns.Widgets.ClassCrest(frame, CREST_SIZE)
 
@@ -415,8 +574,13 @@ local function BuildRow(frame)
 	frame.mentionBar:SetPoint("BOTTOMLEFT", 4, 0)
 	frame.mentionBar:SetWidth(2)
 
+	frame.senderButton = CreateNameButton(frame)
+	frame.crestButton = CreateNameButton(frame)
+
 	frame:SetHyperlinksEnabled(true)
 	frame:SetScript("OnHyperlinkClick", OnHyperlinkClick)
+	frame:SetScript("OnHyperlinkEnter", OnHyperlinkEnter)
+	frame:SetScript("OnHyperlinkLeave", OnHyperlinkLeave)
 	frame:SetScript("OnMouseUp", OnRowMouseUp)
 	frame:SetScript("OnEnter", OnRowEnter)
 	frame:SetScript("OnLeave", OnRowLeave)
@@ -443,6 +607,23 @@ local function LayoutPlainMessage(frame, element)
 		frame.sender:SetTextColor(ns.Theme.ClassColor(element.class))
 		frame.time:SetText(element.time)
 	end
+end
+
+-- Only a plain row with a head and a known author has a name to click.
+local function LayoutNameButtons(frame, element, isBubble)
+	local clickable = element.kind == "message" and element.head and not isBubble and element.name ~= nil
+		and not ns.Window.IsFaded()
+	frame.senderButton:SetShown(clickable)
+	frame.crestButton:SetShown(clickable)
+	if not clickable then return end
+
+	local width = frame.sender:GetStringWidth()
+	frame.senderButton:ClearAllPoints()
+	frame.senderButton:SetPoint("TOPLEFT", frame.sender, "TOPLEFT")
+	frame.senderButton:SetSize(math.max(1, math.ceil(width)), NAME_BUTTON_HEIGHT)
+	frame.crestButton:ClearAllPoints()
+	frame.crestButton:SetAllPoints(frame.crest)
+	frame.crestButton:SetShown(frame.crest:IsShown())
 end
 
 -- The other person's bubble on the left, the player's on the right. The window
@@ -528,6 +709,8 @@ local function InitRow(frame, element)
 	if not frame.body then BuildRow(frame) end
 	if toolbarRow == frame then HideToolbar() end
 	frame.element = element
+	frame.senderButton:Hide()
+	frame.crestButton:Hide()
 
 	local isMessage = element.kind == "message"
 	local isOpener = element.kind == "opener"
@@ -574,6 +757,7 @@ local function InitRow(frame, element)
 	else
 		LayoutPlainMessage(frame, element)
 	end
+	LayoutNameButtons(frame, element, isBubble)
 	frame.body:SetText(element.display)
 	LayoutPills(frame, element, isBubble and frame.bubble or frame.body, isBubble and element.outgoing)
 end
@@ -606,6 +790,8 @@ local function InitLockedRow(frame, element)
 end
 
 local function ResetRow(frame)
+	-- A recycled row can't send OnHyperlinkLeave, so its tooltip would stay up.
+	if GameTooltip:GetOwner() == frame then GameTooltip:Hide() end
 	if frame.lockedBody then
 		frame.lockedBody:ClearText()
 	end
@@ -661,7 +847,7 @@ function MessageList.Refresh(jumpToEnd)
 	local follow = jumpToEnd or scrollBox:IsAtEnd() or not scrollBox:HasScrollableExtent()
 	local conv = ns.Store.Get(ns.selectedKey)
 	local live = ns.Store.GetLive(ns.selectedKey)
-	shownElements = conv and MessageList.BuildElements(conv, visibleLimit, live, unreadAfterId) or {}
+	shownElements = conv and MessageList.BuildElements(conv, visibleLimit, live, unreadAfterId, ns.selectedKey) or {}
 	if conv and (not shownElements[1] or shownElements[1].kind ~= "older") then
 		table.insert(shownElements, 1, MessageList.OpenerFor(ns.selectedKey, conv))
 	end

@@ -84,6 +84,11 @@ function Widgets.Text(frame, fontObject, token)
 	return text
 end
 
+-- Colors an existing text widget (such as an EditBox) from a theme token.
+function Widgets.TrackText(widget, token)
+	Track(widget, token, true)
+end
+
 -- Swaps a themed text's font. A font object brings its own shadow, so the theme's goes back on.
 function Widgets.SetTextFont(text, fontObject)
 	text:SetFontObject(fontObject)

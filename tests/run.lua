@@ -2877,6 +2877,69 @@ Test("Game Master messages are flagged in the list and the glance strip", functi
 	assert(not lines[2].name:find("GM$"), "normal line should not")
 end)
 
+Test("message elements carry the author's raw name for the player menu", function()
+	local ns = Boot()
+	local group = Conversation({
+		{ i = 1, t = 1, x = "hi", s = "Other Person" },
+		{ i = 2, t = 2, x = "mine", o = 1 },
+	})
+	local elements = ns.MessageList.BuildElements(group, 200, nil, nil, "G:Guild")
+	Equal(elements[2].name, "Other Person")
+	Equal(elements[3].name, nil)
+
+	local whisper = Conversation({
+		{ i = 1, t = 1, x = "psst" },
+		{ i = 2, t = 2, x = "reply", o = 1 },
+	}, { name = "Thrall Hellscream" })
+	elements = ns.MessageList.BuildElements(whisper, 200, nil, nil, "W:Thrall Hellscream")
+	Equal(elements[2].name, "Thrall Hellscream")
+	Equal(elements[3].name, nil)
+
+	local bnet = Conversation({ { i = 1, t = 1, x = "hey" } }, { name = "Friend#1234" })
+	Equal(ns.MessageList.BuildElements(bnet, 200, nil, nil, "B:Friend#1234")[2].name, nil)
+	Equal(ns.MessageList.BuildElements(bnet, 200, nil, nil, "B:Friend#1234")[2].raw, "hey")
+end)
+
+Test("copy text keeps link names and emoji shortcodes and drops markup", function()
+	local ns = Boot()
+	local plain = ns.CopyBox.PlainText
+	Equal(plain("|cffa335ee|Hitem:19019::::|h[Thunderfury]|h|r rocks"), "[Thunderfury] rocks")
+	Equal(plain("hi |TInterface\\Icons\\Foo:16|t there"), "hi  there")
+	Equal(plain("nice :heart: work"), "nice :heart: work")
+	Equal(plain("|cnIQ4:|Hitem:1::|h[Sword]|h|r"), "[Sword]")
+end)
+
+Test("conversation text lists every message oldest first with its sender", function()
+	local ns = Boot()
+	local conv = Conversation({
+		{ i = 1, t = 100, x = "|Hitem:1::|h[Sword]|h?", s = "Other Person" },
+		{ i = 2, t = 200, x = "yes :joy:", o = 1 },
+	})
+	local text = ns.MessageList.ConversationText("G:Guild", conv)
+	local first, second = text:match("^(.-)\n(.-)$")
+	Equal(first, "[day0 12:00] Other Person: [Sword]?")
+	Equal(second, "[day0 12:00] You: yes :joy:")
+
+	local whisper = Conversation({ { i = 1, t = 5, x = "psst" } }, { name = "Thrall Hellscream" })
+	Equal(ns.MessageList.ConversationText("W:Thrall Hellscream", whisper), "[day0 12:00] Thrall Hellscream: psst")
+end)
+
+Test("the player menu leaves out whispering the current chat and acting on yourself", function()
+	local ns = Boot()
+	local function Labels(name)
+		local labels = {}
+		for _, item in ipairs(ns.MessageList.PlayerMenuItems(name)) do
+			labels[#labels + 1] = item.label or "-"
+		end
+		return table.concat(labels, ",")
+	end
+	ns.selectedKey = nil
+	Equal(Labels("Other Person"), "Whisper,Invite to group,Add friend,Who,Copy name,-,Block")
+	ns.selectedKey = "W:Other Person"
+	Equal(Labels("Other Person"), "Invite to group,Add friend,Who,Copy name,-,Block")
+	Equal(Labels(ns.me), "Copy name")
+end)
+
 local failures = 0
 for _, test in ipairs(tests) do
 	local ok, err = xpcall(test.fn, debug.traceback)

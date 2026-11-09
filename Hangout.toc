@@ -24,6 +24,7 @@ Features\Protocol.lua
 UI\Theme.lua
 UI\Widgets.lua
 UI\Prompt.lua
+UI\CopyBox.lua
 UI\MessageList.lua
 UI\Sidebar.lua
 UI\ProfileBar.lua

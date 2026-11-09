@@ -188,6 +188,9 @@ local function ShowRowMenu(owner, key)
 			AddChannelItem(root, key)
 		end
 		root:CreateButton("Mark as read", function() ns.Store.MarkRead(key) end)
+		root:CreateButton("Copy conversation", function()
+			ns.CopyBox.Show("Conversation with " .. ns.Store.LabelFor(key, conv), ns.MessageList.ConversationText(key, conv))
+		end)
 		if prefix == "W" then
 			root:CreateButton("Block", function() ConfirmBlock(key, conv) end)
 		end

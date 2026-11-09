@@ -105,6 +105,8 @@ function stubs.Install()
 	_G.C_FriendList = {
 		ShowFriends = function() end,
 		IsFriend = function() return false end,
+		AddFriend = function(name) stubs.friendAdded = name end,
+		SendWho = function(filter) stubs.whoSent = filter end,
 		GetNumFriends = function() return #stubs.friends end,
 		GetFriendInfoByIndex = function(index) return stubs.friends[index] end,
 	}
@@ -141,6 +143,9 @@ function stubs.Install()
 	_G.date = function(format, time)
 		if format == "%Y-%m-%d" then
 			return "day" .. math.floor((time or 0) / SECONDS_PER_DAY)
+		end
+		if format == "%Y-%m-%d %H:%M" then
+			return "day" .. math.floor((time or 0) / SECONDS_PER_DAY) .. " 12:00"
 		end
 		if format == "%B " then return "November " end
 		if format == "%b " then return "Nov " end
