@@ -70,7 +70,10 @@ local newWhileAway = 0
 local visibleLimit = PAGE_SIZE
 local unreadAfterId
 local highlightId
+-- Message ids repeat across chats, so a fade timer identifies its own highlight by token.
+local highlightToken = 0
 local HIGHLIGHT_SECONDS = 3
+local QUOTE_SENDER_MAX_WIDTH = 120
 local shownElements = {}
 local toolbar, toolbarRow
 
@@ -756,6 +759,8 @@ local function InitRow(frame, element)
 	frame.quote:EnableMouse(not ns.Window.IsFaded())
 	if quote then
 		frame.quote.sender:SetText(quote.sender)
+		-- A long name must not push the quoted text out of the row.
+		frame.quote.sender:SetWidth(math.min(frame.quote.sender:GetStringWidth(), QUOTE_SENDER_MAX_WIDTH))
 		frame.quote.text:SetText(quote.text)
 	end
 	frame:EnableMouse(not ns.Window.IsFaded())
@@ -974,6 +979,8 @@ end
 function MessageList.ShowAt(messageId)
 	unreadAfterId = nil
 	highlightId = messageId
+	highlightToken = highlightToken + 1
+	local token = highlightToken
 	newWhileAway = 0
 
 	local conv = ns.Store.Get(ns.selectedKey)
@@ -990,7 +997,7 @@ function MessageList.ShowAt(messageId)
 
 	-- Staying in the same chat never resets the highlight, so let it fade.
 	C_Timer.After(HIGHLIGHT_SECONDS, function()
-		if highlightId == messageId then
+		if highlightToken == token and highlightId then
 			highlightId = nil
 			MessageList.Refresh()
 		end

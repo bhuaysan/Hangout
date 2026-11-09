@@ -140,9 +140,10 @@ function stubs.Install()
 		GetFriendInfoByIndex = function(index) return stubs.friends[index] end,
 	}
 	_G.C_GuildInfo = { GuildRoster = function() end }
-	_G.GetNumGuildMembers = function() return #stubs.guildRoster end
+	_G.GetNumGuildMembers = function() return stubs.guildTotal or #stubs.guildRoster end
 	_G.GetGuildRosterInfo = function(index)
 		local member = stubs.guildRoster[index]
+		if not member then return nil end
 		return member.name, member.rank, member.rankIndex, member.level, nil, nil, nil, nil,
 			member.online, member.status, member.class
 	end

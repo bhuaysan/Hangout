@@ -46,9 +46,13 @@ end
 
 -- Roster -------------------------------------------------------------------
 
+-- Returns the listed members and the guild's real size. The game's roster can
+-- hide offline members, so the size comes from the total it reports, not from
+-- counting the rows.
 local function GuildMembers()
 	local list = {}
-	for index = 1, GetNumGuildMembers() do
+	local total = GetNumGuildMembers()
+	for index = 1, total do
 		-- name, rank, rankIndex, level, class, zone, note, officerNote, online, status, classFileName
 		local name, rank, rankIndex, level, _, _, _, _, isOnline, status, classFile = GetGuildRosterInfo(index)
 		-- Restricted values can't be shown or sorted, so such members are left out.
@@ -70,7 +74,7 @@ local function GuildMembers()
 			end
 		end
 	end
-	return list
+	return list, (canaccessvalue(total) and type(total) == "number") and math.max(total, #list) or #list
 end
 
 local function UnitMember(unit)
@@ -119,7 +123,7 @@ local function GroupMembers()
 	return list
 end
 
--- The chat's members, or nil for a chat without a member list. A guild chat of
+-- The chat's members and, for a guild, its total size; or nil for a chat without a member list. A guild chat of
 -- another guild or character has no roster to show, so it is empty.
 function Members.Roster(key)
 	if not Members.Supports(key) then return nil end
@@ -146,6 +150,7 @@ function Members.Sort(list)
 end
 
 -- "12 online", with the guild's size added for a guild: "12 online  ·  340 members".
+-- showTotal is true to count the list, or the total when the list is only part of it.
 function Members.CountText(list, showTotal)
 	if not list or #list == 0 then return "" end
 	local online = 0
@@ -154,14 +159,15 @@ function Members.CountText(list, showTotal)
 	end
 	local text = L["%d online"]:format(online)
 	if showTotal then
-		text = text .. "  ·  " .. L["%d members"]:format(#list)
+		text = text .. "  ·  " .. L["%d members"]:format(type(showTotal) == "number" and showTotal or #list)
 	end
 	return text
 end
 
 -- The header's count for a chat, or "" when there is nothing to count.
 function Members.SubtitleCount(key)
-	return Members.CountText(Members.Roster(key), Members.IsGuild(key))
+	local list, total = Members.Roster(key)
+	return Members.CountText(list, Members.IsGuild(key) and (total or true))
 end
 
 -- What the tooltip says about a member besides the name.

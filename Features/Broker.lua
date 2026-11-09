@@ -33,7 +33,7 @@ function Broker.TooltipLines(list)
 		if not conv.req then
 			local count = ns.Store.UnreadCount(entry.key, conv)
 			if count > 0 then
-				lines[#lines + 1] = { name = conv.name or entry.key, count = count }
+				lines[#lines + 1] = { name = ns.Store.LabelFor(entry.key, conv), count = count }
 				if #lines == MAX_TOOLTIP_CHATS then break end
 			end
 		end

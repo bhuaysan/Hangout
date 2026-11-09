@@ -1893,6 +1893,16 @@ Test("ParseQuery splits filters from the words to find", function()
 	Equal(onlyFilters.needle, "")
 	Equal(ns.Search.ParseQuery("in:nowhere").needle, "in:nowhere")
 	Equal(ns.Search.ParseQuery("xfrom:bob").from, nil, "a filter must start a word")
+
+	local empty = ns.Search.ParseQuery("boss from: loot")
+	Equal(empty.from, nil, "an empty filter is ignored")
+	Equal(empty.needle, "boss loot")
+	Equal(ns.Search.ParseQuery("from:").needle, "")
+	Equal(ns.Search.ParseQuery('from:"" boss').needle, "boss")
+
+	local open = ns.Search.ParseQuery('boss from:"Jaina Proud')
+	Equal(open.from, "jaina proud", "an unterminated quote takes the rest as the name")
+	Equal(open.needle, "boss")
 end)
 
 Test("search honours from: and the chat scope", function()
@@ -1934,6 +1944,9 @@ Test("search highlights the needle with a color code", function()
 		"The |cffff0000Boss|r and the |cffff0000boss|r")
 	Equal(ns.Search.Highlight("nothing", "boss", "ff0000"), "nothing")
 	Equal(ns.Search.Highlight("anything", "", "ff0000"), "anything")
+	Equal(ns.Search.Highlight("a |TInterface\\Icons\\x:16|t boss", "boss", "ff0000"), "a  |cffff0000boss|r",
+		"texture tags are stripped before highlighting")
+	Equal(ns.Search.Highlight("a |Atag:1:1|a b||c", "b|", "ff0000"), "a  b||c", "a needle with a pipe highlights nothing")
 	Equal(ns.Search.HexColor(1, 0.5, 0), "ff8000")
 	Equal(ns.Search.HexColor(0, 0, 2), "0000ff")
 end)
@@ -3501,10 +3514,13 @@ Test("a quote prefix names the sender and cuts long text on a character boundary
 	local ns = Boot()
 	Equal(ns.Send.QuotePrefix("Pal", "short"), "[Pal: short] ")
 	local long = ns.Send.QuotePrefix("Pal", string.rep("a", 60))
-	Equal(long, "[Pal: " .. string.rep("a", 40) .. "\226\128\166] ")
+	Equal(long, "[Pal: " .. string.rep("a", 32) .. "\226\128\166] ")
 	local umlauts = ns.Send.QuotePrefix("Pal", string.rep("\195\164", 50))
-	Equal(umlauts, "[Pal: " .. string.rep("\195\164", 40) .. "\226\128\166] ")
+	Equal(umlauts, "[Pal: " .. string.rep("\195\164", 32) .. "\226\128\166] ")
 	Equal(ns.Send.QuotePrefix("Pal", "|cffa335ee|Hitem:1:2|h[Sword]|h|r"), "[Pal: [Sword]] ")
+	Equal(ns.Send.QuotePrefix("Pal", "a |TInterface\\Icons\\x:16|t b |Atag:1:1|a c"), "[Pal: a b c] ", "textures and atlases are dropped")
+	Equal(ns.Send.QuotePrefix("Pal", "50|| off |"), "[Pal: 50// off /] ", "no pipe survives to be cut apart")
+	Equal(ns.Send.QuotePrefix(string.rep("n", 40), "hi"), "[" .. string.rep("n", 24) .. "\226\128\166: hi] ", "a long sender is capped")
 end)
 
 Test("a message with a quote link gets a quote element", function()
@@ -3567,6 +3583,56 @@ Test("a reply in a chat without Hangout users carries a visible quote", function
 	Chat(ns, "CHAT_MSG_GUILD", { text = stubs.sent[1].text, name = ns.me })
 	local conv = ns.db.conv[key]
 	Equal(conv.m[#conv.m].q, nil)
+end)
+
+Test("a reply to an own message quotes the real character name", function()
+	local ns = BootWithWindow()
+	ns.MessageList.SenderOf = function(message) return message.o == 1 and "You" or "Someone" end
+	stubs.sent = {}
+	Chat(ns, "CHAT_MSG_GUILD", { text = "who is up for a raid tonight", name = "Some Guildie" })
+	local key = "G:Horde Heroes-Thunderstrike"
+	local conv = ns.db.conv[key]
+	conv.m[#conv.m + 1] = { i = 50, t = 9, x = "i am", o = 1 }
+	conv.nextId = 50
+	ns.Window.Open(key)
+	ns.Composer.SetReply(key, 50)
+	local reply = ns.Composer.PendingReply(key)
+	Equal(reply.sender, "You")
+	Equal(reply.senderName, ns.Util.DisplayName(ns.me))
+	Equal(ns.Send.Text(key, "ok", reply), true)
+	Equal(stubs.sent[1].text, "[" .. ns.Util.DisplayName(ns.me) .. ": i am] ok")
+end)
+
+Test("a reply with the same text as the quoted message still links to it", function()
+	local ns, key, conv = BootWithPeer()
+	Chat(ns, "CHAT_MSG_WHISPER", { text = "hi there", name = "Pal Friend" })
+	Equal(#conv.m, 2)
+	AddonMessage(ns, "Pal Friend", "1;Q;" .. ns.Protocol.Hash("hi there") .. ";" .. ns.Protocol.Hash("hi there"))
+	Equal(conv.m[2].q, 1, "the reply must not resolve to itself")
+	Equal(conv.m[1].q, nil)
+end)
+
+Test("the reply bar announces its height so the window can make room", function()
+	local ns = BootWithWindow()
+	ns.MessageList.SenderOf = function(message) return message.o == 1 and "You" or "Someone" end
+	Chat(ns, "CHAT_MSG_GUILD", { text = "hello", name = "Some Guildie" })
+	local key = "G:Horde Heroes-Thunderstrike"
+	ns.Window.Open(key)
+	local heights = {}
+	ns.On("COMPOSER_RESIZED", function(height) heights[#heights + 1] = height end)
+	ns.Composer.SetReply(key, 1)
+	ns.Composer.SetReply(key, 1)
+	Equal(heights[1], 22)
+	Equal(#heights, 1, "only a change of visibility fires")
+	ns.Fire("COMPOSER_RESIZED", 0)
+end)
+
+Test("the guild member total comes from the game's total, not the listed rows", function()
+	local ns = Boot()
+	stubs.guildRoster = { { name = "Guild Mate", online = true } }
+	stubs.guildTotal = 340
+	Equal(ns.Members.SubtitleCount(ns.Identity.GuildKey("G")), "1 online  ·  340 members")
+	stubs.guildTotal = nil
 end)
 
 Test("the German locale translates known keys and falls back to the key itself", function()

@@ -171,13 +171,15 @@ end
 -- Finds a recent message with this hash, skipping newer ones with the same
 -- text when occurrence is given. onlyOwn limits it to ours. If the two chats
 -- differ and there are too few matches, the oldest match is the best guess.
-local function FindMessage(conv, ref, onlyOwn, occurrence)
+-- exclude is a message to skip, so a reply can't resolve to itself when it has
+-- the same text as the message it quotes.
+local function FindMessage(conv, ref, onlyOwn, occurrence, exclude)
 	local remaining = occurrence or 0
 	local found
 	local oldest = math.max(1, #conv.m - MESSAGE_SEARCH_DEPTH + 1)
 	for position = #conv.m, oldest, -1 do
 		local message = conv.m[position]
-		if (not onlyOwn or message.o == 1) and Protocol.Hash(message.x) == ref then
+		if message ~= exclude and (not onlyOwn or message.o == 1) and Protocol.Hash(message.x) == ref then
 			found = message
 			if remaining == 0 then return found end
 			remaining = remaining - 1
@@ -294,7 +296,7 @@ local function FindUnlinkedIncoming(conv, ref)
 end
 
 local function LinkQuote(key, conv, entry, replying)
-	local quoted = FindMessage(conv, entry.quotedRef, false, entry.occurrence)
+	local quoted = FindMessage(conv, entry.quotedRef, false, entry.occurrence, replying)
 	if not quoted or quoted == replying then return end
 	replying.q = quoted.i
 	ns.Fire("MESSAGES_CHANGED", key)

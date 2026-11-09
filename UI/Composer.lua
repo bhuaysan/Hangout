@@ -29,15 +29,22 @@ local suggestions, selected, suggestedFor = {}, 1, nil
 -- The name being cycled with Tab: where the word starts, the options and the one inserted.
 local tabState
 local REPLY_BAR_HEIGHT = 22
+local barShown = false
 local REPLY_SNIPPET_CHARS = 60
 
--- One pending reply per chat, in memory only: { key, id, sender, snippet }.
+-- One pending reply per chat, in memory only: { key, id, sender, senderName, snippet }.
 local replies = {}
 
 local function UpdateReplyBar()
 	local reply = ns.selectedKey and replies[ns.selectedKey]
 	if not replyBar then return end
-	replyBar:SetShown(reply ~= nil)
+	local shown = reply ~= nil
+	if barShown ~= shown then
+		barShown = shown
+		replyBar:SetShown(shown)
+		-- The bar overlaps the message list, which must make room for it.
+		ns.Fire("COMPOSER_RESIZED", shown and REPLY_BAR_HEIGHT or 0)
+	end
 	if reply then
 		replyBar.text:SetText(L["Replying to %s: %s"]:format(reply.sender, reply.snippet))
 	end
@@ -53,10 +60,20 @@ function Composer.SetReply(key, messageId)
 	local conv = key and key == ns.selectedKey and ns.Store.Get(key)
 	local message = conv and ns.Store.FindMessage(conv, messageId)
 	if not message then return end
+	-- Others never see the bar, so the quote prefix needs the real name, not "You".
+	local senderName
+	if message.o == 1 then
+		senderName = ns.Store.AltName(message) or ns.Util.DisplayName(ns.me)
+	elseif message.s then
+		senderName = ns.Util.DisplayName(message.s)
+	else
+		senderName = ns.Util.DisplayName(conv.name or key:sub(3))
+	end
 	replies[key] = {
 		key = key,
 		id = messageId,
 		sender = ns.MessageList.SenderOf(message, conv),
+		senderName = senderName,
 		snippet = ns.Util.Truncate(ns.Search.VisibleText(message.x), REPLY_SNIPPET_CHARS),
 	}
 	UpdateReplyBar()
@@ -67,8 +84,8 @@ function Composer.PendingReply(key)
 	return replies[key]
 end
 
--- The bar sits on the composer's top edge and overlaps the bottom of the
--- message list, so the window layout needs no extra height for it.
+-- The bar sits on the composer's top edge; the window shortens the message
+-- list by its height while it shows (COMPOSER_RESIZED).
 local function CreateReplyBar(parent)
 	replyBar = CreateFrame("Frame", nil, parent)
 	replyBar:SetHeight(REPLY_BAR_HEIGHT)

@@ -7,7 +7,8 @@ local MAX_BYTES = 255
 local MAX_PARTS = 4
 local SPACE = 32
 local PIPE = 124
-local QUOTE_PREFIX_CHARS = 40
+local QUOTE_PREFIX_CHARS = 32
+local QUOTE_SENDER_CHARS = 24
 
 local CHAT_TYPE_BY_PREFIX = {
 	G = "GUILD",
@@ -127,13 +128,17 @@ end
 
 -- A visible quote for chats whose members may not run Hangout.
 function Send.QuotePrefix(sender, text)
-	return "[" .. sender .. ": " .. ns.Util.Truncate(ns.Search.VisibleText(text), QUOTE_PREFIX_CHARS) .. "] "
+	-- Textures and atlases carry pipes, and a cut inside any escape would make
+	-- the server reject the whole message, so no pipe may survive.
+	local visible = ns.Search.VisibleText(text):gsub("|T.-|t", ""):gsub("|A.-|a", ""):gsub("|", "/")
+	return "[" .. ns.Util.Truncate(sender, QUOTE_SENDER_CHARS) .. ": " .. ns.Util.Truncate(visible, QUOTE_PREFIX_CHARS) .. "] "
 end
 
 -- Must be called from a key press: channel messages require one.
 -- Returns true, or false and a reason. Sent messages are recorded when the
 -- server echoes them back, so they only appear once they were really sent.
--- reply, if given, is { key, id, sender, snippet }: Hangout users get a
+-- reply, if given, is { key, id, sender, senderName, snippet }; senderName is
+-- the real character name, as sender may read "You": Hangout users get a
 -- structured link to the quoted message, everyone else a visible quote.
 function Send.Text(key, text, reply)
 	text = ns.Util.Trim(text)
@@ -145,7 +150,7 @@ function Send.Text(key, text, reply)
 	local quoted = conv and ns.Store.FindMessage(conv, reply.id)
 	local asLink = quoted and ns.Protocol.CanReact(key)
 	if quoted and not asLink then
-		text = Send.QuotePrefix(reply.sender, quoted.x) .. text
+		text = Send.QuotePrefix(reply.senderName or reply.sender, quoted.x) .. text
 	end
 
 	local parts = Send.SplitMessage(text)

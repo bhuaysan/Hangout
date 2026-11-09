@@ -26,6 +26,8 @@ local frame, title, subtitle, header, banner, messages, sidebar, emptyHint
 local collapseButton, closeButton, settingsButton, muteButton, pinButton, membersButton, avatar
 local composer, membersPanel
 local membersOpen = false
+-- How far the composer's reply bar reaches into the body.
+local replyBarHeight = 0
 local settingsOpen = false
 local faded = false
 local hiddenForCombat = false
@@ -193,10 +195,12 @@ end
 -- restriction banner just as the messages do. The composer stays full width.
 local function LayoutBody()
 	local top = ns.Lockdown.IsActive() and -(BANNER_HEIGHT + 1) or -1
+	-- The reply bar sits on the composer's top edge, so both columns end above it.
+	local bottom = 1 + replyBarHeight
 	messages:SetPoint("TOPLEFT", header, "BOTTOMLEFT", 0, top)
-	messages:SetPoint("BOTTOMRIGHT", composer, "TOPRIGHT", membersOpen and -ns.Members.PANEL_WIDTH or 0, 1)
+	messages:SetPoint("BOTTOMRIGHT", composer, "TOPRIGHT", membersOpen and -ns.Members.PANEL_WIDTH or 0, bottom)
 	membersPanel:SetPoint("TOPRIGHT", header, "BOTTOMRIGHT", 0, top)
-	membersPanel:SetPoint("BOTTOMRIGHT", composer, "TOPRIGHT", 0, 1)
+	membersPanel:SetPoint("BOTTOMRIGHT", composer, "TOPRIGHT", 0, bottom)
 end
 
 local function Create()
@@ -227,6 +231,8 @@ local function Create()
 	end)
 	frame:SetScript("OnShow", function()
 		ns.Glance.Hide()
+		-- Guild data goes stale while the window is closed.
+		if ns.Members.IsGuild(ns.selectedKey) then ns.Members.RequestGuildRoster() end
 		if hiddenWithUI then
 			hiddenWithUI = false
 			ns.Sidebar.Refresh()
@@ -349,9 +355,18 @@ function Window.UpdateMembers()
 		membersPanel:SetShown(open)
 		LayoutBody()
 		refreshAfterResize()
+		-- Opening the panel is the moment fresh guild data is wanted.
+		if open and ns.Members.IsGuild(ns.selectedKey) then ns.Members.RequestGuildRoster() end
 	end
 	if open then ns.Members.Refresh() end
 end
+
+ns.On("COMPOSER_RESIZED", function(extraHeight)
+	replyBarHeight = extraHeight or 0
+	if not (frame and messages and membersPanel) then return end
+	LayoutBody()
+	refreshAfterResize()
+end)
 
 -- The name on top, with the chat's note under it when there is one.
 local function UpdateTitle()

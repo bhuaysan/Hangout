@@ -26,11 +26,19 @@ function Search.ParseQuery(text)
 	local parsed = { from = nil, scope = "all", explicitScope = false }
 
 	rest = rest:gsub('%sfrom:"([^"]*)"', function(name)
-		parsed.from = name ~= "" and ns.Util.Trim(name) or nil
+		name = ns.Util.Trim(name)
+		parsed.from = name ~= "" and name or nil
 		return " "
 	end)
-	rest = rest:gsub("%sfrom:(%S+)", function(name)
-		parsed.from = name
+	-- An unterminated quote takes the rest of the query as the name.
+	rest = rest:gsub('%sfrom:"(.*)$', function(name)
+		name = ns.Util.Trim(name)
+		parsed.from = name ~= "" and name or nil
+		return " "
+	end)
+	-- A bare "from:" is dropped instead of being searched for literally.
+	rest = rest:gsub("%sfrom:(%S*)", function(name)
+		if name ~= "" then parsed.from = name end
 		return " "
 	end)
 	rest = rest:gsub("%sin:(%S+)", function(scope)
@@ -51,6 +59,10 @@ end
 -- colorHex is six hex digits, like "ffd100".
 function Search.Highlight(text, needle, colorHex)
 	if needle == "" then return text end
+	-- Texture and atlas tags would be cut apart by a match inside them, and a
+	-- needle with a pipe could never be told apart from an escape.
+	text = text:gsub("|T.-|t", ""):gsub("|A.-|a", "")
+	if needle:find("|", 1, true) then return text end
 	local lowered = text:lower()
 	local pieces, position = {}, 1
 	while true do
@@ -98,7 +110,7 @@ end
 -- start, so "from:thr" finds "Thrall Horde" and "from:jaina p" finds Jaina P.
 local function SenderMatches(from, entry, message)
 	if message.o == 1 then
-		return from == "me" or from == "you"
+		return from == "me" or from == "you" or from == L["You"]:lower()
 	end
 	local sender = message.s or entry.conv.name
 	if not sender then return false end
