@@ -38,7 +38,7 @@ local function UpdateBadge()
 end
 
 function Launcher.UpdateDndIcon()
-	if icon then icon:SetDesaturated(ns.Get("dnd")) end
+	if icon then icon:SetDesaturated(ns.Get("dnd") or ns.Quiet.IsActive()) end
 end
 
 function Launcher.UpdateVisibility()
@@ -64,7 +64,7 @@ function Launcher.MarkAllRead()
 		or "Nothing to mark as read.")
 end
 
-local function ShowMenu(owner)
+function Launcher.ShowMenu(owner)
 	MenuUtil.CreateContextMenu(owner, function(_, root)
 		root:CreateTitle("Hangout")
 		root:CreateCheckbox("Do Not Disturb",
@@ -106,7 +106,7 @@ local function CreateMinimapButton()
 
 	button:SetScript("OnClick", function(self, mouseButton)
 		if mouseButton == "RightButton" then
-			ShowMenu(self)
+			Launcher.ShowMenu(self)
 		else
 			ns.Window.Toggle()
 		end
@@ -130,7 +130,10 @@ function Launcher.Init()
 	ns.ProfileBar.SyncFromGame()
 	Launcher.UpdateDndIcon()
 	Launcher.UpdateVisibility()
+	ns.Broker.Init()
 end
+
+ns.On("QUIET_CHANGED", Launcher.UpdateDndIcon)
 
 local updateBadgeSoon = ns.Util.Debounced(BADGE_DELAY, UpdateBadge)
 for _, message in ipairs({ "MESSAGE_ADDED", "LOCKED_ADDED", "LIVE_CHANGED", "CONV_CHANGED" }) do

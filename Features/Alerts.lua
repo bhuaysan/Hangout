@@ -115,6 +115,8 @@ function Alerts.Decide(key, conv, mention)
 	if conv.req then return nil end
 	if conv.mute and not mention then return nil end
 	if ns.Get("dnd") then return nil end
+	-- Automatic quiet mode is silent like Do Not Disturb, badges still count.
+	if ns.Quiet.IsActive() then return nil end
 	if key == ns.activeKey then return nil end
 
 	local category = CategoryName(key, mention)

@@ -75,6 +75,11 @@ function stubs.Install()
 	_G.WOW_PROJECT_ID = 1
 	_G.Enum = { SendAddonMessageResult = { Success = 0 }, UITextureSliceMode = { Stretched = 0 } }
 	_G.UnitInParty = function() return not stubs.allStrangers end
+	stubs.inInstance = false
+	stubs.instanceType = "none"
+	stubs.inRaid = false
+	_G.IsInInstance = function() return stubs.inInstance, stubs.instanceType end
+	_G.IsInRaid = function() return stubs.inRaid end
 	_G.UnitInRaid = function() return false end
 	_G.IsGuildMember = function() return false end
 	_G.debugprofilestop = function() return stubs.profileMs end
