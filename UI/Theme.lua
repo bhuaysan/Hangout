@@ -137,6 +137,45 @@ Theme.PRESET_ORDER = {
 }
 
 local tokens = {}
+
+local REGULAR_FONT = "Interface\\AddOns\\Hangout\\Media\\Lato-Regular.ttf"
+local BOLD_FONT = "Interface\\AddOns\\Hangout\\Media\\Lato-Bold.ttf"
+
+-- Lato has no Korean or Chinese characters, so those come from the game's fonts.
+local FONT_FILES_BY_ALPHABET = {
+	korean = "Fonts\\2002.TTF",
+	simplifiedchinese = "Fonts\\ARKai_T.ttf",
+	traditionalchinese = "Fonts\\blei00d.TTF",
+}
+
+local fontFamilies = {}
+
+local function FontFamily(file, height)
+	local name = ("HangoutFamily%s%d"):format(file == BOLD_FONT and "Bold" or "Regular", height)
+	if not fontFamilies[name] then
+		local members = {
+			{ alphabet = "roman", file = file, height = height, flags = "" },
+			{ alphabet = "russian", file = file, height = height, flags = "" },
+		}
+		for alphabet, fallback in pairs(FONT_FILES_BY_ALPHABET) do
+			members[#members + 1] = { alphabet = alphabet, file = fallback, height = height, flags = "" }
+		end
+		fontFamilies[name] = CreateFontFamily(name, members)
+	end
+	return fontFamilies[name]
+end
+
+local function NewFont(name, file, height)
+	CreateFont(name):SetFontObject(FontFamily(file, height))
+end
+
+NewFont("HangoutFont", REGULAR_FONT, 13)
+NewFont("HangoutFontBold", BOLD_FONT, 13)
+NewFont("HangoutFontSmall", REGULAR_FONT, 11)
+NewFont("HangoutFontSmallBold", BOLD_FONT, 11)
+NewFont("HangoutFontLarge", REGULAR_FONT, 16)
+NewFont("HangoutFontLargeBold", BOLD_FONT, 16)
+
 local messageFont = CreateFont("HangoutMessageFont")
 
 local function ActivePreset()
@@ -176,8 +215,7 @@ local function BuildTokens()
 end
 
 local function ApplyFont()
-	local path, _, flags = ChatFontNormal:GetFont()
-	messageFont:SetFont(path, ns.Get("messageSize"), flags)
+	messageFont:SetFontObject(FontFamily(REGULAR_FONT, ns.Get("messageSize")))
 end
 
 function Theme.Apply()

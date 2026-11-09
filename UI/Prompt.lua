@@ -28,7 +28,7 @@ local function Create()
 	tinsert(UISpecialFrames, "HangoutPrompt")
 	ns.Widgets.RoundedFill(frame, "sidebar"):SetAllPoints()
 
-	message = ns.Widgets.Text(frame, "GameFontHighlight", "text")
+	message = ns.Widgets.Text(frame, "HangoutFont", "text")
 	message:SetPoint("TOPLEFT", 16, -14)
 	message:SetPoint("TOPRIGHT", -16, -14)
 	message:SetWordWrap(true)

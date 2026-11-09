@@ -77,11 +77,11 @@ local function AddSection(title, build)
 	line:SetPoint("TOPRIGHT")
 	line:SetHeight(1)
 
-	local label = ns.Widgets.Text(header, "GameFontDisableSmall", "muted")
+	local label = ns.Widgets.Text(header, "HangoutFontSmall", "muted")
 	label:SetPoint("LEFT", LEFT, 0)
 	label:SetText(title)
 
-	section.marker = ns.Widgets.Text(header, "GameFontHighlight", "muted")
+	section.marker = ns.Widgets.Text(header, "HangoutFont", "muted")
 	section.marker:SetPoint("RIGHT", -LEFT, 0)
 
 	header:SetScript("OnClick", function()
@@ -97,7 +97,7 @@ local function AddSection(title, build)
 end
 
 local function Label(text, top)
-	local label = ns.Widgets.Text(content, "GameFontHighlight", "text")
+	local label = ns.Widgets.Text(content, "HangoutFont", "text")
 	label:SetPoint("LEFT", content, "TOPLEFT", LEFT, top - ROW_HEIGHT / 2)
 	label:SetText(text)
 	return label
@@ -120,7 +120,7 @@ local function Toggle(text, settingKey, onChange)
 	check:SetPoint("TOPLEFT", outline, "TOPLEFT", 3, -3)
 	check:SetPoint("BOTTOMRIGHT", outline, "BOTTOMRIGHT", -3, 3)
 
-	local label = ns.Widgets.Text(row, "GameFontHighlight", "text")
+	local label = ns.Widgets.Text(row, "HangoutFont", "text")
 	label:SetPoint("LEFT", outline, "RIGHT", CHECK_LABEL_GAP, 0)
 	label:SetText(text)
 	-- The whole label is clickable, not only the box.
@@ -142,16 +142,16 @@ local function Stepper(text, settingKey, minimum, maximum, step, suffix, onChang
 	Label(text, top)
 	local centerY = top - ROW_HEIGHT / 2
 
-	local minus = ns.Widgets.TextButton(content, "-", "GameFontHighlightLarge")
+	local minus = ns.Widgets.TextButton(content, "-", "HangoutFontLarge")
 	minus:SetSize(24, 24)
 	minus:SetPoint("LEFT", content, "TOPLEFT", CONTROL_X, centerY)
 
-	local value = ns.Widgets.Text(content, "GameFontHighlight", "text")
+	local value = ns.Widgets.Text(content, "HangoutFont", "text")
 	value:SetPoint("LEFT", minus, "RIGHT", 4, 0)
 	value:SetWidth(72)
 	value:SetJustifyH("CENTER")
 
-	local plus = ns.Widgets.TextButton(content, "+", "GameFontHighlightLarge")
+	local plus = ns.Widgets.TextButton(content, "+", "HangoutFontLarge")
 	plus:SetSize(24, 24)
 	plus:SetPoint("LEFT", value, "RIGHT", 4, 0)
 
@@ -178,7 +178,7 @@ local function Choice(text, options, getter, setter)
 	button:SetSize(CHOICE_WIDTH, 22)
 	button:SetPoint("LEFT", content, "TOPLEFT", CONTROL_X, top - ROW_HEIGHT / 2)
 	ns.Widgets.RoundedFill(button, "selected"):SetAllPoints()
-	local current = ns.Widgets.Text(button, "GameFontHighlight", "text")
+	local current = ns.Widgets.Text(button, "HangoutFont", "text")
 	current:SetPoint("LEFT", 8, 0)
 	current:SetPoint("RIGHT", -8, 0)
 	current:SetWordWrap(false)
@@ -295,7 +295,7 @@ local function RuleRow(text, settingKey)
 end
 
 local function Note(text)
-	local note = ns.Widgets.Text(content, "GameFontDisableSmall", "muted")
+	local note = ns.Widgets.Text(content, "HangoutFontSmall", "muted")
 	note:SetPoint("TOPLEFT", LEFT, NextRow(18))
 	note:SetPoint("RIGHT", content, "RIGHT", -LEFT, 0)
 	note:SetText(text)

@@ -70,7 +70,7 @@ local function Create()
 	crest = ns.Widgets.ClassCrest(frame, CREST_SIZE)
 	crest:SetPoint("LEFT", TEXT_LEFT, 0)
 
-	title = ns.Widgets.Text(frame, "GameFontNormal", "text")
+	title = ns.Widgets.Text(frame, "HangoutFontBold", "text")
 	title:SetWordWrap(false)
 
 	body = ns.Widgets.Text(frame, "HangoutMessageFont", "muted")

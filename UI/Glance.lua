@@ -70,10 +70,10 @@ local function CreateRow(index)
 	row.crest = ns.Widgets.ClassCrest(row, CREST_SIZE)
 	row.crest:SetPoint("LEFT", CREST_LEFT, 0)
 
-	row.name = ns.Widgets.Text(row, "GameFontNormal", "text")
+	row.name = ns.Widgets.Text(row, "HangoutFontBold", "text")
 	row.name:SetWordWrap(false)
 
-	row.body = ns.Widgets.Text(row, "GameFontHighlight", "text")
+	row.body = ns.Widgets.Text(row, "HangoutFont", "text")
 	row.body:SetPoint("LEFT", row.name, "RIGHT", 7, 0)
 	row.body:SetPoint("RIGHT", -6, 0)
 	row.body:SetWordWrap(false)

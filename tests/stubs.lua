@@ -88,7 +88,11 @@ function stubs.Install()
 	_G.Minimap.GetWidth = function() return 140 end
 	_G.UIParent = Tolerant()
 	_G.CreateFont = function() return Tolerant() end
-	_G.ChatFontNormal = { GetFont = function() return "font.ttf", 14, "" end }
+	stubs.fontFamilies = {}
+	_G.CreateFontFamily = function(name, members)
+		stubs.fontFamilies[name] = members
+		return Tolerant()
+	end
 	_G.Settings = Tolerant()
 	_G.ScrollBoxConstants = {}
 	stubs.chatFilters = {}

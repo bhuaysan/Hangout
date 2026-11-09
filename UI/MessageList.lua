@@ -383,15 +383,15 @@ local function BuildRow(frame)
 
 	frame.bubble = ns.Widgets.Rounded(frame, "BORDER")
 
-	frame.sender = ns.Widgets.Text(frame, "GameFontNormal", "text")
+	frame.sender = ns.Widgets.Text(frame, "HangoutFontBold", "text")
 	frame.sender:SetPoint("TOPLEFT", TEXT_LEFT, -4)
 
-	frame.time = ns.Widgets.Text(frame, "GameFontDisableSmall", "muted")
+	frame.time = ns.Widgets.Text(frame, "HangoutFontSmall", "muted")
 
 	frame.body = ns.Widgets.Text(frame, "HangoutMessageFont", "text")
 	frame.body:SetWordWrap(true)
 
-	frame.label = ns.Widgets.Text(frame, "GameFontDisableSmall", "muted")
+	frame.label = ns.Widgets.Text(frame, "HangoutFontSmall", "muted")
 	frame.label:SetJustifyH("CENTER")
 
 	frame.highlight = ns.Widgets.Fill(frame, "selected")
@@ -401,9 +401,9 @@ local function BuildRow(frame)
 
 	frame.openerAvatar = ns.Widgets.ChatAvatar(frame, OPENER_AVATAR_SIZE, 22)
 	ns.Widgets.PlaceChatAvatar(frame.openerAvatar, "LEFT", SIDE_PADDING + 2, 0)
-	frame.openerTitle = ns.Widgets.Text(frame, "GameFontNormalLarge", "text")
+	frame.openerTitle = ns.Widgets.Text(frame, "HangoutFontLargeBold", "text")
 	frame.openerTitle:SetPoint("TOPLEFT", SIDE_PADDING + OPENER_AVATAR_SIZE + 14, -17)
-	frame.openerText = ns.Widgets.Text(frame, "GameFontHighlightSmall", "muted")
+	frame.openerText = ns.Widgets.Text(frame, "HangoutFontSmall", "muted")
 	frame.openerText:SetPoint("TOPLEFT", SIDE_PADDING + OPENER_AVATAR_SIZE + 14, -40)
 
 	frame.mentionBar = ns.Widgets.Solid(frame, "accent", "ARTWORK")
@@ -483,7 +483,7 @@ local function PillAt(frame, index)
 		pill.row = frame
 		pill.fill = ns.Widgets.Rounded(pill)
 		pill.fill:SetAllPoints()
-		pill.label = ns.Widgets.Text(pill, "GameFontHighlightSmall", "text")
+		pill.label = ns.Widgets.Text(pill, "HangoutFontSmall", "text")
 		pill.label:SetPoint("CENTER")
 		pill:SetScript("OnClick", OnPillClick)
 		frame.pills[index] = pill
@@ -578,7 +578,7 @@ local function InitLockedRow(frame, element)
 	frame:EnableMouse(false)
 
 	if not frame.lockedBody then
-		frame.lockedMeta = ns.Widgets.Text(frame, "GameFontDisableSmall", "muted")
+		frame.lockedMeta = ns.Widgets.Text(frame, "HangoutFontSmall", "muted")
 		frame.lockedMeta:SetPoint("TOPLEFT", TEXT_LEFT, -4)
 
 		frame.lockedBody = ns.Widgets.Text(frame, "HangoutMessageFont", "muted")

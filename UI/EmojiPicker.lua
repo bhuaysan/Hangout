@@ -69,7 +69,7 @@ local function CreateSearch()
 	holder:SetPoint("TOPLEFT", PADDING, -PADDING)
 	holder:SetPoint("TOPRIGHT", -PADDING, -PADDING)
 
-	searchPlaceholder = ns.Widgets.Text(holder, "GameFontDisableSmall", "muted")
+	searchPlaceholder = ns.Widgets.Text(holder, "HangoutFontSmall", "muted")
 	searchPlaceholder:SetPoint("LEFT", 6, 0)
 	searchPlaceholder:SetText("Search emoji")
 
@@ -93,7 +93,7 @@ local function CreateTabs(top)
 	local groups = ns.Emoji.GROUPS
 	local width = COLUMNS * CELL / #groups
 	for index, group in ipairs(groups) do
-		local button, label = ns.Widgets.TextButton(panel, group.label, "GameFontHighlightSmall")
+		local button, label = ns.Widgets.TextButton(panel, group.label, "HangoutFontSmall")
 		button:SetSize(width, BAR_HEIGHT)
 		button:SetPoint("TOPLEFT", PADDING + (index - 1) * width, top)
 		-- The hover color must not stick to the tab that is selected.
@@ -149,7 +149,7 @@ local function Create(anchor)
 		cells[index] = CreateCell(index, gridTop)
 	end
 
-	emptyText = ns.Widgets.Text(panel, "GameFontHighlight", "muted")
+	emptyText = ns.Widgets.Text(panel, "HangoutFont", "muted")
 	emptyText:SetPoint("CENTER", 0, gridTop / 2)
 	emptyText:SetText("No emoji match that search.")
 

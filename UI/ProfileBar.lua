@@ -136,12 +136,12 @@ function ProfileBar.Create(parent)
 	ns.Widgets.RoundedFill(settingsButton, "selected"):SetAllPoints()
 	settingsButton:SetScript("OnClick", function() ns.SettingsUI.Toggle() end)
 
-	nameText = ns.Widgets.Text(bar, "GameFontHighlight", "text")
+	nameText = ns.Widgets.Text(bar, "HangoutFont", "text")
 	nameText:SetPoint("TOPLEFT", TEXT_LEFT, -11)
 	nameText:SetPoint("TOPRIGHT", -(8 + BUTTON_SIZE + 10), -11)
 	nameText:SetWordWrap(false)
 
-	statusText = ns.Widgets.Text(bar, "GameFontDisableSmall", "muted")
+	statusText = ns.Widgets.Text(bar, "HangoutFontSmall", "muted")
 	statusText:SetPoint("TOPLEFT", TEXT_LEFT, -29)
 
 	CreateStatusButton()

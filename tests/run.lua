@@ -1409,7 +1409,7 @@ Test("dark text on a light theme has no shadow, and follows theme changes", func
 	local frame = { CreateFontString = function() return region end }
 
 	ns.Theme.SetPreset("paper")
-	ns.Widgets.Text(frame, "GameFontHighlight", "text")
+	ns.Widgets.Text(frame, "HangoutFont", "text")
 	Equal(shadowAlpha, 0)
 	ns.Theme.SetPreset("midnight")
 	Equal(shadowAlpha, 1)
@@ -1418,13 +1418,41 @@ Test("dark text on a light theme has no shadow, and follows theme changes", func
 	Equal(shadowAlpha, 0)
 end)
 
+Test("every font family covers all of the game's alphabets with files that exist", function()
+	Boot()
+	assert(next(stubs.fontFamilies), "no font families were created")
+	for name, members in pairs(stubs.fontFamilies) do
+		local alphabets = {}
+		for _, member in ipairs(members) do
+			alphabets[member.alphabet] = true
+			local addonPath = member.file:match("^Interface\\AddOns\\Hangout\\(.+)$")
+			if addonPath then
+				local file = io.open((addonPath:gsub("\\", "/")), "rb")
+				assert(file, name .. " is missing " .. member.file)
+				file:close()
+			end
+		end
+		for _, alphabet in ipairs({ "roman", "russian", "korean", "simplifiedchinese", "traditionalchinese" }) do
+			assert(alphabets[alphabet], name .. " has no " .. alphabet .. " font")
+		end
+	end
+end)
+
+Test("changing the message size uses a font family of that size", function()
+	local ns = Boot()
+	Equal(stubs.fontFamilies.HangoutFamilyRegular19, nil)
+	ns.Set("messageSize", 19)
+	ns.Theme.Apply()
+	Equal(stubs.fontFamilies.HangoutFamilyRegular19[1].height, 19)
+end)
+
 Test("swapping a font keeps the theme's shadow", function()
 	local ns = Boot()
 	local calls = {}
 	local region = stubs.Tolerant()
 	region.SetFontObject = function() calls[#calls + 1] = "font" end
 	region.SetShadowColor = function() calls[#calls + 1] = "shadow" end
-	ns.Widgets.SetTextFont(region, "GameFontHighlight")
+	ns.Widgets.SetTextFont(region, "HangoutFont")
 	Equal(table.concat(calls, ","), "font,shadow")
 end)
 

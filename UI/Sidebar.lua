@@ -234,18 +234,18 @@ local function BuildRow(frame)
 
 	frame.avatar = ns.Widgets.ChatAvatar(frame, CREST_SIZE, ROOM_ICON_SIZE)
 
-	frame.text = ns.Widgets.Text(frame, "GameFontHighlight", "text")
+	frame.text = ns.Widgets.Text(frame, "HangoutFont", "text")
 	frame.text:SetWordWrap(false)
 
-	frame.time = ns.Widgets.Text(frame, "GameFontDisableSmall", "muted")
+	frame.time = ns.Widgets.Text(frame, "HangoutFontSmall", "muted")
 	frame.time:SetJustifyH("RIGHT")
 
-	frame.snippet = ns.Widgets.Text(frame, "GameFontDisableSmall", "muted")
+	frame.snippet = ns.Widgets.Text(frame, "HangoutFontSmall", "muted")
 	frame.snippet:SetWordWrap(false)
 
 	frame.badgePill = ns.Widgets.RoundedFill(frame, "accent", "ARTWORK")
 	frame.badgePill:SetHeight(BADGE_HEIGHT)
-	frame.badge = ns.Widgets.Text(frame, "GameFontNormalSmall", "panel")
+	frame.badge = ns.Widgets.Text(frame, "HangoutFontSmallBold", "panel")
 	frame.badge:SetPoint("CENTER", frame.badgePill)
 	frame.badge:SetJustifyH("CENTER")
 
@@ -324,7 +324,7 @@ local function InitRow(frame, element)
 		label = ""
 	end
 	frame.text:SetText(label)
-	ns.Widgets.SetTextFont(frame.text, (isRow or isResult) and "GameFontHighlight" or "GameFontDisableSmall")
+	ns.Widgets.SetTextFont(frame.text, (isRow or isResult) and "HangoutFont" or "HangoutFontSmall")
 	if isRow and not element.muted then
 		local overlay = element.key == ns.selectedKey and "selected" or nil
 		frame.text:SetTextColor(ns.Theme.ClassColor(element.class, "sidebar", overlay))
@@ -397,7 +397,7 @@ local function CreateSearchBox(parent)
 
 	ns.Widgets.Icon(searchHolder, "search", SEARCH_ICON_SIZE, "muted"):SetPoint("LEFT", 7, 0)
 
-	searchPlaceholder = ns.Widgets.Text(searchHolder, "GameFontDisableSmall", "muted")
+	searchPlaceholder = ns.Widgets.Text(searchHolder, "HangoutFontSmall", "muted")
 	searchPlaceholder:SetPoint("LEFT", SEARCH_TEXT_LEFT, 0)
 	searchPlaceholder:SetText("Search")
 
