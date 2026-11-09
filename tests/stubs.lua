@@ -168,6 +168,8 @@ function stubs.Install()
 	}
 	_G.RAID_CLASS_COLORS = { SHAMAN = { r = 0, g = 0.44, b = 0.87 } }
 	_G.CLASS_ICON_TCOORDS = { SHAMAN = { 0.25, 0.5, 0.25, 0.5 } }
+	stubs.afk = false
+	_G.UnitIsAFK = function() return stubs.afk end
 	_G.LOCALIZED_CLASS_NAMES_MALE = { SHAMAN = "Schamane" }
 	_G.SlashCmdList = {}
 	_G.HangoutDB = nil

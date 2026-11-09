@@ -556,6 +556,45 @@ Test("the conversation opener speaks to who the chat is with", function()
 	assert(not channel.text:find("Trade", 1, true), "a channel gets the general line")
 end)
 
+Test("status follows the game's AFK flag", function()
+	local ns = Boot()
+	Equal(ns.ProfileBar.CurrentStatus(), "online")
+	stubs.afk = true
+	Equal(ns.ProfileBar.CurrentStatus(), "afk")
+end)
+
+Test("Do Not Disturb isn't overridden by going idle", function()
+	local ns = Boot()
+	ns.Launcher.SetDnd(true)
+	stubs.afk = true
+	Equal(ns.ProfileBar.CurrentStatus(), "dnd")
+end)
+
+Test("choosing AFK sends the game's AFK toggle and ends Do Not Disturb", function()
+	local ns = Boot()
+	ns.Launcher.SetDnd(true)
+	ns.ProfileBar.SetStatus("afk")
+	Equal(ns.Get("dnd"), false)
+	Equal(#stubs.sent, 1)
+	Equal(stubs.sent[1].chatType, "AFK")
+end)
+
+Test("choosing Online leaves AFK, and doesn't toggle when already online", function()
+	local ns = Boot()
+	ns.ProfileBar.SetStatus("online")
+	Equal(#stubs.sent, 0, "already online")
+	stubs.afk = true
+	ns.ProfileBar.SetStatus("online")
+	Equal(#stubs.sent, 1)
+end)
+
+Test("AFK can't be toggled during a chat restriction", function()
+	local ns = Boot()
+	stubs.lockdown = true
+	ns.ProfileBar.SetStatus("afk")
+	Equal(#stubs.sent, 0)
+end)
+
 Test("a new day adds a separator and restarts grouping", function()
 	local ns = Boot()
 	local base = 86400 * 100
