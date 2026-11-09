@@ -20,6 +20,8 @@ Features\EmojiData.lua
 Features\Emoji.lua
 Features\Filter.lua
 Features\Search.lua
+Features\History.lua
+Features\Complete.lua
 Features\Protocol.lua
 UI\Theme.lua
 UI\Widgets.lua

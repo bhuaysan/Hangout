@@ -2877,6 +2877,62 @@ Test("Game Master messages are flagged in the list and the glance strip", functi
 	assert(not lines[2].name:find("GM$"), "normal line should not")
 end)
 
+Test("history keeps a ring, walks back and forth and restores the draft", function()
+	local ns = Boot()
+	ns.History.Clear()
+	Equal(ns.History.Older("x"), nil)
+	ns.History.Push("one")
+	ns.History.Push("two")
+	ns.History.Push("two")
+	Equal(ns.History.Count(), 2, "duplicates of the newest are skipped")
+	Equal(ns.History.Older("draft"), "two")
+	Equal(ns.History.Older("ignored"), "one")
+	Equal(ns.History.Older("ignored"), nil, "stops at the oldest")
+	Equal(ns.History.Newer(), "two")
+	Equal(ns.History.Newer(), "draft", "ends with the remembered draft")
+	Equal(ns.History.IsBrowsing(), false)
+	Equal(ns.History.Newer(), nil)
+	ns.History.Older("a")
+	ns.History.Push("three")
+	Equal(ns.History.IsBrowsing(), false, "sending resets browsing")
+	for i = 1, 60 do ns.History.Push("m" .. i) end
+	Equal(ns.History.Count(), 50)
+	Equal(ns.History.Older(""), "m60")
+end)
+
+Test("tab completion offers full names by full or first name prefix", function()
+	local ns = Boot()
+	local whisper = Conversation({ Message(1, "hi") }, { name = "Thrall Stormrage" })
+	local list = ns.Complete.Names(whisper, "thr")
+	Equal(#list, 1)
+	Equal(list[1], "Thrall Stormrage")
+	Equal(#ns.Complete.Names(whisper, "storm"), 0, "last name alone does not match")
+	Equal(#ns.Complete.Names(whisper, "Thrall S"), 1)
+
+	local group = Conversation({
+		{ i = 1, t = 1, x = "a", s = "Anna Smith" },
+		{ i = 2, t = 2, x = "b", s = "Anton Jones" },
+		{ i = 3, t = 3, x = "c", s = "Anna Smith" },
+	}, { name = "party" })
+	local names = ns.Complete.Names(group, "an")
+	Equal(#names, 2, "distinct senders")
+	Equal(names[1], "Anna Smith", "most recent first")
+	Equal(names[2], "Anton Jones")
+	Equal(#ns.Complete.Names(group, ""), 0)
+end)
+
+Test("shortcode detection needs a colon, two word characters and the cursor behind them", function()
+	local ns = Boot()
+	local start, partial = ns.Complete.ShortcodeAt("hello :smi", 10)
+	Equal(start, 7)
+	Equal(partial, "smi")
+	Equal(ns.Complete.ShortcodeAt("hello :s", 8), nil, "one character is too short")
+	Equal(ns.Complete.ShortcodeAt("meet at 10:30", 13), nil, "times are not shortcodes")
+	Equal(ns.Complete.ShortcodeAt("hello :smi", 8), nil, "cursor before the end of the partial")
+	Equal(ns.Complete.ShortcodeAt(":smile: ", 8), nil, "finished shortcode")
+	Equal(ns.Complete.ShortcodeAt("\195\164 :sm", 6), 4, "cursor counts characters, not bytes")
+end)
+
 local failures = 0
 for _, test in ipairs(tests) do
 	local ok, err = xpcall(test.fn, debug.traceback)
