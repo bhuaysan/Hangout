@@ -34,6 +34,7 @@ local STATUS_ICON = {
 	dnd = "Interface\\FriendsFrame\\StatusIcon-DnD",
 	offline = "Interface\\FriendsFrame\\StatusIcon-Offline",
 }
+Widgets.STATUS_ICON = STATUS_ICON
 local BATTLE_NET_CREST = "Interface\\FriendsFrame\\Battlenet-Portrait"
 local ICON_INDEX = {}
 for index, name in ipairs(ICON_NAMES) do

@@ -28,9 +28,11 @@ Features\Protocol.lua
 UI\Theme.lua
 UI\Widgets.lua
 UI\Prompt.lua
+UI\PlayerMenu.lua
 UI\CopyBox.lua
 UI\MessageList.lua
 UI\Sidebar.lua
+UI\Members.lua
 UI\ProfileBar.lua
 UI\EmojiPicker.lua
 UI\Composer.lua

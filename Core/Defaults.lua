@@ -14,6 +14,7 @@ ns.Defaults = {
 	hideWhispers = false,
 	showMinimap = true,
 	sidebarCollapsed = false,
+	showMembers = false,
 	minimapAngle = 215,
 	requestsEnabled = true,
 	sendTyping = true,
