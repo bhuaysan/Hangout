@@ -84,6 +84,8 @@ local function ShowStatusMenu(owner)
 				function() return ProfileBar.CurrentStatus() == status end,
 				function() ProfileBar.SetStatus(status) end)
 		end
+		root:CreateDivider()
+		root:CreateButton("Mark all as read", function() ns.Launcher.MarkAllRead() end)
 	end)
 end
 

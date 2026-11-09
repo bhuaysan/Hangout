@@ -95,6 +95,7 @@ function stubs.Install()
 	end
 	_G.Settings = Tolerant()
 	_G.ScrollBoxConstants = {}
+	_G.BaseScrollBoxEvents = { OnScroll = "OnScroll" }
 	stubs.chatFilters = {}
 	stubs.lastTell = nil
 	_G.ChatFrameUtil = {

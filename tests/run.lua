@@ -2557,6 +2557,35 @@ Test("a non-emoji between colons doesn't swallow the next shortcode", function()
 	Equal(ns.Emoji.Render("a:b:c:d"), "a:b:c:d")
 end)
 
+Test("the jump pill names how many messages were missed", function()
+	local ns = Boot()
+	Equal(ns.MessageList.JumpLabel(0), "Jump to latest")
+	Equal(ns.MessageList.JumpLabel(nil), "Jump to latest")
+	Equal(ns.MessageList.JumpLabel(1), "1 new message")
+	Equal(ns.MessageList.JumpLabel(12), "12 new messages")
+end)
+
+Test("marking everything read clears every chat but keeps requests as requests", function()
+	local ns = Boot()
+	Chat(ns, "CHAT_MSG_WHISPER", { text = "one", name = "A B" })
+	Chat(ns, "CHAT_MSG_WHISPER", { text = "two", name = "C D" })
+	ns.db.conv["W:C D"].req = true
+	ns.session.conv["C:trade"] = { nextId = 3, m = {}, lastT = 0 }
+	ns.session.liveUnread["C:trade"] = 2
+	local changes = 0
+	ns.On("CONV_CHANGED", function() changes = changes + 1 end)
+
+	Equal(ns.Store.MarkAllRead(), 3)
+	Equal(changes, 1, "one CONV_CHANGED")
+	Equal(ns.Store.UnreadCount("W:A B", ns.db.conv["W:A B"]), 0)
+	Equal(ns.Store.UnreadCount("W:C D", ns.db.conv["W:C D"]), 0)
+	Equal(ns.Store.UnreadCount("C:trade", ns.session.conv["C:trade"]), 0)
+	Equal(ns.Store.TotalUnread(), 0)
+	Equal(ns.db.conv["W:C D"].req, true)
+	Equal(ns.Store.MarkAllRead(), 0)
+	Equal(changes, 1, "nothing to announce the second time")
+end)
+
 Test("long messages never split an escaped pipe", function()
 	local ns = Boot()
 	local parts = ns.Send.SplitMessage(string.rep("a", 254) .. "||b")

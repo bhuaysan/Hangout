@@ -59,7 +59,8 @@ local TOOLTIP_LINKS = {
 }
 local NAME_BUTTON_HEIGHT = 16
 
-local scrollBox, measure
+local scrollBox, measure, jumpButton, jumpLabel
+local newWhileAway = 0
 local visibleLimit = PAGE_SIZE
 local unreadAfterId
 local highlightId
@@ -805,6 +806,49 @@ local function ChooseRow(factory, element)
 	end
 end
 
+local JUMP_WIDTH = 140
+local JUMP_RAISE = 8
+
+-- The wording of the jump pill: plain until messages arrive while scrolled away.
+function MessageList.JumpLabel(count)
+	if not count or count <= 0 then return "Jump to latest" end
+	if count == 1 then return "1 new message" end
+	return count .. " new messages"
+end
+
+-- Whether the list sits at its end, where new messages are followed.
+local function IsFollowing()
+	return not scrollBox:HasScrollableExtent() or scrollBox:IsAtEnd()
+end
+
+-- Shows the pill only while the player is scrolled away from the end. Reaching
+-- the end by any means also forgets the messages that were missed. The pill is
+-- hidden in a faded window so it can't catch clicks meant for the game.
+local function UpdateJumpButton()
+	if not jumpButton then return end
+	local away = not IsFollowing()
+	if not away then newWhileAway = 0 end
+	local show = away and not ns.Window.IsFaded()
+	jumpButton:SetShown(show)
+	jumpButton:EnableMouse(show)
+	if show then
+		jumpLabel:SetText(MessageList.JumpLabel(newWhileAway))
+	end
+end
+
+local function CreateJumpButton(parent)
+	jumpButton, jumpLabel = ns.Widgets.FlatButton(parent, MessageList.JumpLabel(0), JUMP_WIDTH)
+	jumpButton:SetPoint("BOTTOM", scrollBox, "BOTTOM", 0, JUMP_RAISE)
+	jumpButton:SetFrameLevel(jumpButton:GetFrameLevel() + 10)
+	jumpButton:SetScript("OnClick", function()
+		newWhileAway = 0
+		scrollBox:ScrollToEnd(ScrollBoxConstants.NoScrollInterpolation)
+		UpdateJumpButton()
+	end)
+	jumpButton:Hide()
+	scrollBox:RegisterCallback(BaseScrollBoxEvents.OnScroll, UpdateJumpButton, jumpButton)
+end
+
 function MessageList.Create(parent)
 	measure = parent:CreateFontString(nil, "OVERLAY", "HangoutMessageFont")
 	measure:SetPoint("TOPLEFT")
@@ -823,6 +867,7 @@ function MessageList.Create(parent)
 	scrollBox:SetPoint("TOPLEFT")
 	scrollBox:SetPoint("BOTTOMRIGHT", -14, 0)
 	CreateToolbar(parent)
+	CreateJumpButton(parent)
 end
 
 -- The first row of a chat whose whole history is on screen.
@@ -855,6 +900,7 @@ function MessageList.Refresh(jumpToEnd)
 	if follow then
 		scrollBox:ScrollToEnd(ScrollBoxConstants.NoScrollInterpolation)
 	end
+	UpdateJumpButton()
 end
 
 -- Empties the list when no conversation is left to show.
@@ -862,8 +908,10 @@ local function Clear()
 	unreadAfterId = nil
 	highlightId = nil
 	shownElements = {}
+	newWhileAway = 0
 	if scrollBox then
 		scrollBox:SetDataProvider(CreateDataProvider(shownElements))
+		UpdateJumpButton()
 	end
 end
 
@@ -880,6 +928,7 @@ end
 local function Show(firstUnreadAfterId, unreadCount)
 	unreadAfterId = firstUnreadAfterId
 	highlightId = nil
+	newWhileAway = 0
 	visibleLimit = math.max(PAGE_SIZE, (unreadCount or 0) + CONTEXT_ROWS)
 	MessageList.Refresh(true)
 	if firstUnreadAfterId then
@@ -891,6 +940,7 @@ end
 function MessageList.ShowAt(messageId)
 	unreadAfterId = nil
 	highlightId = messageId
+	newWhileAway = 0
 
 	local conv = ns.Store.Get(ns.selectedKey)
 	local messages = conv and conv.m or {}
@@ -921,7 +971,13 @@ ns.On("SELECTION_CHANGED", function(key, firstUnreadAfterId, unreadCount)
 	end
 end)
 
-ns.On("MESSAGE_ADDED", RefreshIfCurrent)
+-- Counts what arrives out of sight, so the jump pill can say how much was missed.
+ns.On("MESSAGE_ADDED", function(key, record, mention, recovered)
+	if scrollBox and key == ns.selectedKey and not recovered and ns.Window.IsVisible() and not IsFollowing() then
+		newWhileAway = newWhileAway + 1
+	end
+	RefreshIfCurrent(key, record, mention, recovered)
+end)
 ns.On("LOCKED_ADDED", RefreshIfCurrent)
 ns.On("MESSAGES_CHANGED", RefreshIfCurrent)
 ns.On("LIVE_CHANGED", function() MessageList.Refresh() end)

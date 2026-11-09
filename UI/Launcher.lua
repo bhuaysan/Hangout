@@ -58,12 +58,19 @@ function Launcher.SetDnd(enabled)
 	ns.ProfileBar.SetStatus(enabled and "dnd" or "online")
 end
 
+function Launcher.MarkAllRead()
+	local count = ns.Store.MarkAllRead()
+	ns.Print(count > 0 and ("Marked " .. count .. (count == 1 and " chat" or " chats") .. " as read.")
+		or "Nothing to mark as read.")
+end
+
 local function ShowMenu(owner)
 	MenuUtil.CreateContextMenu(owner, function(_, root)
 		root:CreateTitle("Hangout")
 		root:CreateCheckbox("Do Not Disturb",
 			function() return ns.Get("dnd") end,
 			function() Launcher.SetDnd(not ns.Get("dnd")) end)
+		root:CreateButton("Mark all as read", Launcher.MarkAllRead)
 		root:CreateButton("Settings", function() ns.Window.OpenSettings() end)
 	end)
 end
@@ -224,6 +231,8 @@ SlashCmdList.HANGOUT = function(input)
 		PrintList()
 	elseif command == "show" then
 		PrintConversation(tonumber(argument) or 0)
+	elseif command == "read" then
+		Launcher.MarkAllRead()
 	elseif command == "combat" then
 		SetCombatMode(argument)
 	else
