@@ -64,6 +64,7 @@ local newWhileAway = 0
 local visibleLimit = PAGE_SIZE
 local unreadAfterId
 local highlightId
+local HIGHLIGHT_SECONDS = 3
 local shownElements = {}
 local toolbar, toolbarRow
 
@@ -960,6 +961,14 @@ function MessageList.ShowAt(messageId)
 
 	MessageList.Refresh(true)
 	ScrollToFirst(function(element) return element.id == messageId end, ScrollBoxConstants.AlignCenter)
+
+	-- Staying in the same chat never resets the highlight, so let it fade.
+	C_Timer.After(HIGHLIGHT_SECONDS, function()
+		if highlightId == messageId then
+			highlightId = nil
+			MessageList.Refresh()
+		end
+	end)
 end
 
 -- Opening the window rebuilds the list, and so does the end of a recovery, so

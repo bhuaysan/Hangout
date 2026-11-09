@@ -1861,6 +1861,83 @@ Test("search resumes where it paused and stops at the result limit", function()
 	Equal(#state.results, 200)
 end)
 
+Test("ParseQuery splits filters from the words to find", function()
+	local ns = Boot()
+	local plain = ns.Search.ParseQuery("  Hello World ")
+	Equal(plain.needle, "hello world")
+	Equal(plain.from, nil)
+	Equal(plain.scope, "all")
+	Equal(plain.explicitScope, false)
+
+	local one = ns.Search.ParseQuery("from:Thrall boss")
+	Equal(one.from, "thrall")
+	Equal(one.needle, "boss")
+
+	local two = ns.Search.ParseQuery('from:"Jaina Proud" the portal')
+	Equal(two.from, "jaina proud")
+	Equal(two.needle, "the portal")
+
+	Equal(ns.Search.ParseQuery("from:me gold").from, "me")
+
+	local here = ns.Search.ParseQuery("in:this loot")
+	Equal(here.scope, "this")
+	Equal(here.explicitScope, true)
+	Equal(here.needle, "loot")
+
+	local mixed = ns.Search.ParseQuery("the in:this boss from:\"A B\" dies")
+	Equal(mixed.needle, "the boss dies")
+	Equal(mixed.from, "a b")
+	Equal(mixed.scope, "this")
+
+	local onlyFilters = ns.Search.ParseQuery("from:bob")
+	Equal(onlyFilters.needle, "")
+	Equal(ns.Search.ParseQuery("in:nowhere").needle, "in:nowhere")
+	Equal(ns.Search.ParseQuery("xfrom:bob").from, nil, "a filter must start a word")
+end)
+
+Test("search honours from: and the chat scope", function()
+	local ns = Boot()
+	Chat(ns, "CHAT_MSG_WHISPER", { text = "boss up", name = "Thrall Horde" })
+	Chat(ns, "CHAT_MSG_WHISPER", { text = "boss down", name = "Jaina Proud" })
+	local thrall = ns.db.conv["W:Thrall Horde"]
+	thrall.m[#thrall.m + 1] = { i = 99, t = 5, x = "my boss reply", o = 1 }
+	thrall.nextId = 99
+
+	local function Run(query, selected, scope)
+		local state = ns.Search.NewState(query, SearchList(ns), selected, scope)
+		ns.Search.Advance(state, function() return false end)
+		return state.results
+	end
+
+	Equal(#Run("boss"), 3)
+	local fromThrall = Run("from:thr boss")
+	Equal(#fromThrall, 1)
+	Equal(fromThrall[1].snippet, "boss up")
+	Equal(fromThrall[1].sender, "Thrall Horde")
+	Equal(#Run('from:"jaina proud" boss'), 1)
+	Equal(#Run("from:jaina"), 1, "a filter alone matches every message from them")
+
+	local mine = Run("from:me")
+	Equal(#mine, 1)
+	Equal(mine[1].snippet, "my boss reply")
+	Equal(mine[1].sender, "You")
+
+	Equal(#Run("boss in:this", "W:Thrall Horde"), 2)
+	Equal(#Run("boss", "W:Thrall Horde", "this"), 2, "the sidebar toggle narrows the search")
+	Equal(#Run("boss in:all", "W:Thrall Horde", "this"), 3, "an explicit in: beats the toggle")
+	Equal(#Run("boss in:this", nil), 0, "no open chat leaves nothing to search")
+end)
+
+Test("search highlights the needle with a color code", function()
+	local ns = Boot()
+	Equal(ns.Search.Highlight("The Boss and the boss", "boss", "ff0000"),
+		"The |cffff0000Boss|r and the |cffff0000boss|r")
+	Equal(ns.Search.Highlight("nothing", "boss", "ff0000"), "nothing")
+	Equal(ns.Search.Highlight("anything", "", "ff0000"), "anything")
+	Equal(ns.Search.HexColor(1, 0.5, 0), "ff8000")
+	Equal(ns.Search.HexColor(0, 0, 2), "0000ff")
+end)
+
 Test("the sidebar shows matching chats and message results while searching", function()
 	local ns = Boot()
 	local elements = ns.Sidebar.BuildElements({

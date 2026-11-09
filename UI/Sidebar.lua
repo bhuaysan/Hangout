@@ -8,6 +8,7 @@ local COLLAPSED_HEADER_HEIGHT = 8
 local ROW_HEIGHT = 48
 local RESULT_ROW_HEIGHT = 42
 local SEARCH_HEIGHT = 44
+local SCOPE_BAR_HEIGHT = 20
 local SEARCH_FIELD_HEIGHT = 28
 local SEARCH_TEXT_LEFT = 26
 local SEARCH_ICON_SIZE = 14
@@ -34,9 +35,12 @@ local SECTIONS = {
 	{ label = "CHANNELS", prefixes = "C" },
 }
 
-local scrollBox, searchHolder, searchBox, searchPlaceholder, newChatButton
+local scrollBox, scrollBar, searchHolder, searchBox, searchPlaceholder, newChatButton
+local scopeBar, scopeStatus, scopeButtons
 local collapsed = false
 local searchResults = {}
+local searchScope = "all"
+local searchFinished = true
 
 local function RowFor(entry)
 	local preview, lastTime = ns.Store.LastActivity(entry.key, entry.conv)
@@ -81,6 +85,9 @@ local function BuildSearchElements(list, query, results)
 			id = result.id,
 			label = result.label,
 			snippet = result.snippet,
+			sender = result.sender,
+			time = result.time and ns.Util.ShortTime(result.time, GetServerTime()) or "",
+			needle = result.needle,
 		}
 	end
 	AddSection(elements, "MESSAGES", resultRows)
@@ -260,6 +267,10 @@ local function BuildRow(frame)
 	frame.snippet = ns.Widgets.Text(frame, "HangoutFontSmall", "muted")
 	frame.snippet:SetWordWrap(false)
 
+	-- Who wrote a search result, in front of its snippet.
+	frame.sender = ns.Widgets.Text(frame, "HangoutFontSmallBold", "text")
+	frame.sender:SetWordWrap(false)
+
 	frame.badgePill = ns.Widgets.RoundedFill(frame, "accent", "ARTWORK")
 	frame.badgePill:SetHeight(BADGE_HEIGHT)
 	frame.badge = ns.Widgets.Text(frame, "HangoutFontSmallBold", "panel")
@@ -305,12 +316,15 @@ local function LayoutText(frame, element)
 	frame.text:ClearAllPoints()
 	frame.time:ClearAllPoints()
 	frame.snippet:ClearAllPoints()
+	frame.sender:ClearAllPoints()
 	frame.badgePill:ClearAllPoints()
 	frame.text:SetJustifyH("LEFT")
 	if element.kind == "result" then
+		frame.time:SetPoint("TOPRIGHT", -8, -7)
 		frame.text:SetPoint("TOPLEFT", 14, -6)
-		frame.text:SetPoint("TOPRIGHT", -8, -6)
-		frame.snippet:SetPoint("TOPLEFT", 14, -23)
+		frame.text:SetPoint("TOPRIGHT", frame.time, "TOPLEFT", -6, 1)
+		frame.sender:SetPoint("TOPLEFT", 14, -23)
+		frame.snippet:SetPoint("TOPLEFT", frame.sender, "TOPRIGHT", 4, 0)
 		frame.snippet:SetPoint("TOPRIGHT", -8, -23)
 	elseif element.kind == "header" then
 		frame.text:SetPoint("LEFT", HEADER_LEFT, 0)
@@ -352,10 +366,14 @@ local function InitRow(frame, element)
 	end
 
 	local showsPreview = isRow and not collapsed
-	frame.time:SetShown(showsPreview)
+	frame.time:SetShown(showsPreview or isResult)
+	frame.sender:SetShown(isResult)
 	frame.snippet:SetShown(isResult or showsPreview)
 	if isResult then
-		frame.snippet:SetText(element.snippet)
+		frame.sender:SetText(element.sender or "")
+		frame.time:SetText(element.time or "")
+		frame.snippet:SetText(ns.Search.Highlight(element.snippet, element.needle or "",
+			ns.Search.HexColor(ns.Theme.Color("accent"))))
 		frame.snippet:SetTextColor(ns.Theme.Color("muted"))
 	elseif showsPreview then
 		frame.time:SetText(element.time)
@@ -383,18 +401,50 @@ function Sidebar.Refresh()
 	scrollBox:SetDataProvider(CreateDataProvider(elements), ScrollBoxConstants.RetainScrollPosition)
 end
 
+local function ResultsText(count)
+	if not searchFinished then return "Searching..." end
+	if count == 0 then return "No results" end
+	return count == 1 and "1 result" or count .. " results"
+end
+
+-- The scope toggles and the status line only exist while there is a query.
+local function UpdateScopeBar()
+	if not scopeBar then return end
+	local query = CurrentQuery()
+	local shown = not collapsed and query ~= ""
+	scopeBar:SetShown(shown)
+	local top = shown and SEARCH_HEIGHT + SCOPE_BAR_HEIGHT or collapsed and 0 or SEARCH_HEIGHT
+	scrollBox:SetPoint("TOPLEFT", 0, -top)
+	scrollBar:SetPoint("TOPRIGHT", -2, -top)
+	for scope, button in pairs(scopeButtons) do
+		local active = scope == searchScope
+		button.label:SetTextColor(ns.Theme.Color(active and "accent" or "muted"))
+		button.active = active
+	end
+	if #query < MIN_SEARCH_LENGTH then
+		scopeStatus:SetText("")
+	else
+		scopeStatus:SetText(ResultsText(#searchResults))
+	end
+end
+
 local function RunSearch()
 	local query = CurrentQuery()
 	searchResults = {}
 	if #query < MIN_SEARCH_LENGTH then
 		ns.Search.Cancel()
+		searchFinished = true
+		UpdateScopeBar()
 		Sidebar.Refresh()
 		return
 	end
-	ns.Search.Run(query, function(results)
+	searchFinished = false
+	ns.Search.Run(query, function(results, finished)
 		searchResults = results
+		searchFinished = finished
+		UpdateScopeBar()
 		Sidebar.Refresh()
-	end)
+	end, searchScope)
 end
 
 local runSearchSoon = ns.Util.Debounced(SEARCH_DELAY, RunSearch)
@@ -420,6 +470,9 @@ local function CreateSearchBox(parent)
 
 	searchBox:SetScript("OnTextChanged", function()
 		UpdateSearchPlaceholder()
+		-- Until the debounced search starts, the old count would be misleading.
+		searchFinished = #CurrentQuery() < MIN_SEARCH_LENGTH
+		UpdateScopeBar()
 		Sidebar.Refresh()
 		runSearchSoon()
 	end)
@@ -430,6 +483,49 @@ local function CreateSearchBox(parent)
 		self:SetText("")
 		self:ClearFocus()
 	end)
+end
+
+local SCOPES = {
+	{ scope = "all", text = "All chats", width = 58 },
+	{ scope = "this", text = "This chat", width = 58 },
+}
+
+-- Two text toggles under the search field choose where the search looks.
+local function CreateScopeBar(parent)
+	scopeBar = CreateFrame("Frame", nil, parent)
+	scopeBar:SetHeight(SCOPE_BAR_HEIGHT)
+	scopeBar:SetPoint("TOPLEFT", 8, -SEARCH_HEIGHT)
+	scopeBar:SetPoint("TOPRIGHT", -8, -SEARCH_HEIGHT)
+	scopeBar:Hide()
+	scopeButtons = {}
+
+	local previous
+	for _, choice in ipairs(SCOPES) do
+		local button, label = ns.Widgets.TextButton(scopeBar, choice.text, "HangoutFontSmall")
+		button.label = label
+		button:SetSize(choice.width, SCOPE_BAR_HEIGHT)
+		if previous then
+			button:SetPoint("LEFT", previous, "RIGHT", 4, 0)
+		else
+			button:SetPoint("LEFT", 6, 0)
+		end
+		-- The active toggle keeps its accent color when the mouse leaves.
+		button:SetScript("OnLeave", function()
+			label:SetTextColor(ns.Theme.Color(button.active and "accent" or "muted"))
+		end)
+		button:SetScript("OnClick", function()
+			if searchScope == choice.scope then return end
+			searchScope = choice.scope
+			UpdateScopeBar()
+			RunSearch()
+		end)
+		scopeButtons[choice.scope] = button
+		previous = button
+	end
+
+	scopeStatus = ns.Widgets.Text(scopeBar, "HangoutFontSmall", "muted")
+	scopeStatus:SetPoint("RIGHT", -6, 0)
+	scopeStatus:SetJustifyH("RIGHT")
 end
 
 local function StartWhisper(text)
@@ -449,13 +545,13 @@ end
 function Sidebar.Create(parent)
 	CreateSearchBox(parent)
 	CreateNewChatButton(parent)
+	CreateScopeBar(parent)
 	ns.ProfileBar.Create(parent)
 
 	local view = CreateScrollBoxListLinearView(4, 8, 0, 0, 0)
 	view:SetElementInitializer("Button", InitRow)
 	view:SetElementExtentCalculator(ExtentOf)
 
-	local scrollBar
 	scrollBox, scrollBar = ns.Widgets.ScrollList(parent, view)
 	scrollBar:SetPoint("TOPRIGHT", -2, -SEARCH_HEIGHT)
 	scrollBar:SetPoint("BOTTOMRIGHT", -2, ns.ProfileBar.HEIGHT + 4)
@@ -468,8 +564,8 @@ function Sidebar.SetCollapsed(isCollapsed)
 	searchHolder:SetShown(not collapsed)
 	newChatButton:SetShown(not collapsed)
 	if collapsed then searchBox:SetText("") end
-	scrollBox:SetPoint("TOPLEFT", 0, collapsed and 0 or -SEARCH_HEIGHT)
 	scrollBox:SetPoint("BOTTOMRIGHT", collapsed and 0 or -LIST_RIGHT_GAP, ns.ProfileBar.HEIGHT)
+	UpdateScopeBar()
 	ns.ProfileBar.SetCollapsed(collapsed)
 	Sidebar.Refresh()
 end
