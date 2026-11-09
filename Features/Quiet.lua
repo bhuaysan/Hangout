@@ -60,7 +60,8 @@ events:SetScript("OnEvent", function(_, event)
 		combatOverride = true
 	elseif event == "PLAYER_REGEN_ENABLED" then
 		combatOverride = false
-	else
+	elseif event == "PLAYER_ENTERING_WORLD" then
+		-- A loading screen can end combat without a regen event.
 		combatOverride = nil
 	end
 	Quiet.Update()
