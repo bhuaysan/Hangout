@@ -9,10 +9,11 @@ local TRIM_MARGIN = 50
 -- Keys containing "?" have no stable identity, so they stay in memory.
 -- Public channels stay in memory unless the chat was opted in to saving.
 function Store.IsPersistent(key)
-	if key:find("?", 1, true) or ns.CategoryOf(key) == "live" then
+	local category = ns.CategoryOf(key)
+	if key:find("?", 1, true) or category == "live" or category == "nearby" then
 		return false
 	end
-	if ns.CategoryOf(key) == "channel" then
+	if category == "channel" then
 		local kept = ns.db.settings.keepChannels
 		return kept ~= nil and kept[key] == true
 	end
@@ -71,9 +72,28 @@ local function ClearRequest(key, conv)
 	ns.Fire("REQUEST_ACCEPTED", key)
 end
 
--- Public channels are too busy for unread counts to mean anything.
+-- Removes the oldest messages, but never one the player saved.
+local function TrimOldest(messages, excess)
+	local write, removed = 0, 0
+	local count = #messages
+	for read = 1, count do
+		local message = messages[read]
+		if removed < excess and not message.b then
+			removed = removed + 1
+		else
+			write = write + 1
+			messages[write] = message
+		end
+	end
+	for i = write + 1, count do
+		messages[i] = nil
+	end
+end
+
+-- Public channels and people nearby are too busy for unread counts to mean anything.
 local function CountsUnread(key)
-	return ns.CategoryOf(key) ~= "channel"
+	local category = ns.CategoryOf(key)
+	return category ~= "channel" and category ~= "nearby"
 end
 
 -- record: { t = serverTime, x = text, o = 1 if outgoing, s = sender, k = class, f = flags }
@@ -102,17 +122,20 @@ function Store.Add(key, meta, record, recovered)
 		conv.stranger = nil
 	end
 
-	if record.o == 1 or key == ns.activeKey then
+	-- A whisper to yourself arrives twice, and its outgoing copy says nothing
+	-- about whether the incoming one was read.
+	local echoToSelf = record.o == 1 and ns.me ~= nil and key == "W:" .. ns.me
+	if key == ns.activeKey or (record.o == 1 and not echoToSelf) then
 		conv.unread = nil
 		conv.readId = conv.nextId
-	elseif CountsUnread(key) or mention then
+	elseif not echoToSelf and (CountsUnread(key) or mention) then
 		conv.unread = (conv.unread or 0) + 1
 	end
 
 	if Store.IsPersistent(key) then
 		local cap = ns.Get("perChatCap")
 		if #messages > cap + TRIM_MARGIN then
-			DropOldest(messages, #messages - cap)
+			TrimOldest(messages, #messages - cap)
 		end
 	else
 		local ring = ns.Get("sessionRing")
@@ -153,6 +176,47 @@ function Store.GetLive(key)
 	return ns.session.live[key]
 end
 
+-- Notices are status lines inside a chat: { t = serverTime, kind = "failed" or
+-- "away", text = ... }. They aren't messages, so they stay in memory and out of
+-- search, copies, unread counts and the Hangout protocol. "away" notices keep
+-- only the newest of the same text, as every whisper gets the same auto-reply.
+function Store.AddNotice(key, notice)
+	local list = ns.session.notices[key]
+	if not list then
+		list = {}
+		ns.session.notices[key] = list
+	end
+	if notice.kind == "away" then
+		for index = #list, 1, -1 do
+			if list[index].kind == "away" and list[index].text == notice.text then
+				table.remove(list, index)
+			end
+		end
+	end
+	list[#list + 1] = notice
+	local ring = ns.Get("sessionRing")
+	if #list > ring then
+		DropOldest(list, #list - ring)
+	end
+	ns.Fire("MESSAGES_CHANGED", key)
+end
+
+function Store.GetNotices(key)
+	return ns.session.notices[key]
+end
+
+function Store.RemoveNotice(key, notice)
+	local list = ns.session.notices[key]
+	if not list then return end
+	for index = #list, 1, -1 do
+		if list[index] == notice then
+			table.remove(list, index)
+			break
+		end
+	end
+	ns.Fire("MESSAGES_CHANGED", key)
+end
+
 -- What a sidebar row shows: the newest message's text and its time, or nil for
 -- a chat with no messages. Locked text is secret, so it is never read here.
 function Store.LastActivity(key, conv)
@@ -165,14 +229,14 @@ function Store.LastActivity(key, conv)
 	end
 	if not last then return nil end
 
-	local prefix = ""
+	local text = ns.Emoji.Display(last.x)
 	if last.o == 1 then
-		prefix = "You: "
+		return L["You: %s"]:format(text), last.t
 	elseif last.s then
 		local sender = Store.SenderLabel(last.s)
-		prefix = (sender:match("^%S+") or sender) .. ": "
+		return L["%s: %s"]:format(sender:match("^%S+") or sender, text), last.t
 	end
-	return prefix .. ns.Emoji.Display(last.x), last.t
+	return text, last.t
 end
 
 -- Replaces the locked elements of every conversation after recovery.
@@ -217,15 +281,16 @@ function Store.StartWhisper(typedName)
 	local name = ns.Util.NormalizeName(ns.Util.Trim(typedName))
 	if not name then return nil end
 
-	local wanted = name:lower()
+	local wanted = ns.Util.Lower(name)
 	for _, entry in ipairs(Store.List()) do
-		if entry.key:sub(1, 2) == "W:" and entry.key:sub(3):lower() == wanted then
+		if entry.key:sub(1, 2) == "W:" and ns.Util.Lower(entry.key:sub(3)) == wanted then
 			return entry.key
 		end
 	end
 
-	name = name:gsub("(%S)(%S*)", function(first, rest)
-		return first:upper() .. rest:lower()
+	name = name:gsub("%S+", function(word)
+		local first = ns.Util.FirstCharacter(word)
+		return ns.Util.Upper(first) .. ns.Util.Lower(word:sub(#first + 1))
 	end)
 	local key = "W:" .. name
 	local conv = Store.Ensure(key, { name = name })
@@ -235,16 +300,32 @@ function Store.StartWhisper(typedName)
 end
 
 -- Muted chats and requests keep their own badge but don't add to the total.
-function Store.TotalUnread()
+-- Whispers, plus lines locked by a restriction: most of those are whispers
+-- whose sender can't be read yet.
+function Store.IsPersonal(key)
+	local category = ns.CategoryOf(key)
+	return category == "whisper" or category == "live"
+end
+
+local function SumUnread(counts)
 	local total = 0
 	for _, conversations in ipairs({ ns.db.conv, ns.session.conv }) do
 		for key, conv in pairs(conversations) do
-			if not conv.mute and not conv.req then
+			if not conv.mute and not conv.req and (not counts or counts(key)) then
 				total = total + Store.UnreadCount(key, conv)
 			end
 		end
 	end
 	return total
+end
+
+function Store.TotalUnread()
+	return SumUnread()
+end
+
+-- Unread messages written to the player personally.
+function Store.WhisperUnread()
+	return SumUnread(Store.IsPersonal)
 end
 
 -- Returns whether anything was unread, so callers can decide what to announce.
@@ -287,6 +368,23 @@ function Store.MarkAllRead()
 	return #changed
 end
 
+-- Puts a chat back on the to-do list, from its newest incoming message on.
+-- Returns false if nobody has written anything yet.
+function Store.MarkUnread(key)
+	local conv = Store.Get(key)
+	if not conv then return false end
+	for position = #conv.m, 1, -1 do
+		local message = conv.m[position]
+		if message.o ~= 1 then
+			conv.unread = math.max(conv.unread or 0, 1)
+			conv.readId = message.i - 1
+			ns.Fire("CONV_CHANGED")
+			return true
+		end
+	end
+	return false
+end
+
 function Store.AcceptRequest(key)
 	local conv = Store.Get(key)
 	if not conv then return end
@@ -300,7 +398,40 @@ function Store.SetField(key, field, value)
 	if not conv then return end
 	if value == "" then value = nil end
 	conv[field] = value
+	if field == "mute" then conv.muteUntil = nil end
 	ns.Fire("CONV_CHANGED")
+end
+
+-- Mutes a chat for a while, or until turned off when seconds is nil.
+function Store.MuteFor(key, seconds)
+	local conv = Store.Get(key)
+	if not conv then return end
+	conv.mute = true
+	conv.muteUntil = seconds and GetServerTime() + seconds or nil
+	ns.Fire("CONV_CHANGED")
+end
+
+function Store.ExpireMutes(now)
+	local changed = false
+	for _, conversations in ipairs({ ns.db.conv, ns.session.conv }) do
+		for _, conv in pairs(conversations) do
+			if conv.muteUntil and conv.muteUntil <= now then
+				conv.mute, conv.muteUntil = nil, nil
+				changed = true
+			end
+		end
+	end
+	if changed then ns.Fire("CONV_CHANGED") end
+end
+
+-- Saved messages survive the retention limits. Returns whether it is saved now.
+function Store.ToggleSaved(key, messageId)
+	local conv = Store.Get(key)
+	local message = conv and Store.FindMessage(conv, messageId)
+	if not message then return false end
+	message.b = not message.b and 1 or nil
+	ns.Fire("MESSAGES_CHANGED", key)
+	return message.b == 1
 end
 
 function Store.Delete(key)
@@ -308,6 +439,7 @@ function Store.Delete(key)
 	ns.session.conv[key] = nil
 	ns.session.live[key] = nil
 	ns.session.liveUnread[key] = nil
+	ns.session.notices[key] = nil
 	ns.Fire("CONV_CHANGED")
 end
 

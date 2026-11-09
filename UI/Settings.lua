@@ -377,10 +377,13 @@ local function BuildBehavior()
 		{ value = "off", label = L["Stay visible"] },
 	})
 	Stepper(L["Faded opacity"], "combatOpacity", 5, 60, 5, "%")
+	Toggle(L["See-through while moving"], "moveFade")
+	Stepper(L["Opacity while moving"], "moveFadeOpacity", 10, 90, 10, "%")
 	Toggle(L["Show others when I'm typing"], "sendTyping")
 	Toggle(L["Send read receipts"], "sendReadReceipts")
 	Toggle(L["Hide whispers from normal chat"], "hideWhispers", function() ns.Filter.Apply() end)
 	Toggle(L["Show minimap button"], "showMinimap", function() ns.Launcher.UpdateVisibility() end)
+	Toggle(L["Show say, yell and emotes"], "showNearby")
 end
 
 local function BuildHistory()

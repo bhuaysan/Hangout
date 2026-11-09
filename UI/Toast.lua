@@ -11,7 +11,7 @@ local TEXT_LEFT = 12
 local TEXT_LEFT_WITH_CREST = TEXT_LEFT + CREST_SIZE + 8
 
 local frame, title, body, crest, timer
-local currentKey
+local currentKey, currentJump
 local wasDragged = false
 
 local function SavePosition()
@@ -35,7 +35,12 @@ local function OnMouseUp(_, button)
 	end
 	frame:Hide()
 	if button == "LeftButton" and currentKey then
-		ns.Window.Reply(currentKey)
+		if currentJump then
+			ns.Window.Open(currentKey)
+			ns.Window.JumpTo(currentKey, currentJump)
+		else
+			ns.Window.Reply(currentKey)
+		end
 	end
 end
 
@@ -91,6 +96,7 @@ end
 function Toast.Show(key, conv, record)
 	if not frame then Create() end
 	currentKey = key
+	currentJump = record.jump
 
 	local name = ns.Store.LabelFor(key, conv)
 	if record.s then

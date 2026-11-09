@@ -8,8 +8,15 @@ local PREVIEW_LINES = 10
 local MINIMAP_RADIUS_OFFSET = 5
 local BADGE_DELAY = 0.1
 local ICON = "Interface\\AddOns\\Hangout\\Media\\icon.png"
+local HIGHLIGHT = "Interface\\Minimap\\UI-Minimap-ZoomButton-Highlight"
+local PILL_HEIGHT = 15
+local PILL_BASE_WIDTH = 9
+local PILL_DIGIT_WIDTH = 6
+local GLOW_LOW_ALPHA = 0.15
+local GLOW_HIGH_ALPHA = 0.85
+local GLOW_SECONDS = 0.9
 
-local button, badge, icon
+local button, badge, badgePill, icon, glow, glowPulse
 
 -- Minimap button ---------------------------------------------------------------
 
@@ -29,12 +36,32 @@ local function FollowCursor()
 	PlaceButton()
 end
 
+-- What the button should say, or nil for nothing. Only whispers count: a busy
+-- guild chat would keep it lit all evening. silent is for Do Not Disturb and
+-- quiet mode: the count stays, the movement doesn't.
+function Launcher.BadgeState(whispers, silent)
+	if whispers == 0 then return nil end
+	return { text = ns.Util.BadgeText(whispers), pulse = not silent }
+end
+
 local function UpdateBadge()
 	if not badge then return end
-	local total = ns.Store.TotalUnread()
-	badge:SetShown(total > 0)
-	if total > 0 then
-		badge:SetText(ns.Util.BadgeText(total))
+	local state = Launcher.BadgeState(ns.Store.WhisperUnread(), ns.Get("dnd") or ns.Quiet.IsActive())
+
+	local pulse = state ~= nil and state.pulse
+	badge:SetShown(state ~= nil)
+	badgePill:SetShown(state ~= nil)
+	glow:SetShown(pulse)
+	-- Every new message lands here, and must not restart a pulse already running.
+	if pulse and not glowPulse:IsPlaying() then
+		glowPulse:Play()
+	elseif not pulse then
+		glowPulse:Stop()
+	end
+	if state then
+		badge:SetText(state.text)
+		badgePill:SetWidth(PILL_BASE_WIDTH + #state.text * PILL_DIGIT_WIDTH)
+		badge:SetTextColor(ns.Theme.Color("panel"))
 	end
 end
 
@@ -83,7 +110,7 @@ local function CreateMinimapButton()
 	button:SetFrameLevel(8)
 	button:RegisterForDrag("LeftButton")
 	button:RegisterForClicks("LeftButtonUp", "RightButtonUp")
-	button:SetHighlightTexture("Interface\\Minimap\\UI-Minimap-ZoomButton-Highlight")
+	button:SetHighlightTexture(HIGHLIGHT)
 
 	local background = button:CreateTexture(nil, "BACKGROUND")
 	background:SetSize(24, 24)
@@ -100,9 +127,32 @@ local function CreateMinimapButton()
 	border:SetPoint("TOPLEFT")
 	border:SetTexture("Interface\\Minimap\\MiniMap-TrackingBorder")
 
-	badge = button:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-	badge:SetPoint("TOPRIGHT", 2, 0)
-	badge:SetTextColor(1, 1, 1)
+	glow = button:CreateTexture(nil, "OVERLAY")
+	glow:SetAllPoints()
+	glow:SetTexture(HIGHLIGHT)
+	glow:SetBlendMode("ADD")
+	glow:Hide()
+	glowPulse = glow:CreateAnimationGroup()
+	glowPulse:SetLooping("BOUNCE")
+	local fade = glowPulse:CreateAnimation("Alpha")
+	fade:SetFromAlpha(GLOW_LOW_ALPHA)
+	fade:SetToAlpha(GLOW_HIGH_ALPHA)
+	fade:SetDuration(GLOW_SECONDS)
+	fade:SetSmoothing("IN_OUT")
+
+	-- Its own layer, so the pill sits on top of the button's round border.
+	local badgeLayer = CreateFrame("Frame", nil, button)
+	badgeLayer:SetAllPoints()
+	badgeLayer:SetFrameLevel(button:GetFrameLevel() + 2)
+
+	badgePill = ns.Widgets.RoundedFill(badgeLayer, "accent", "ARTWORK")
+	badgePill:SetHeight(PILL_HEIGHT)
+	badgePill:SetPoint("TOPRIGHT", 4, 2)
+	badgePill:Hide()
+
+	badge = badgeLayer:CreateFontString(nil, "OVERLAY", "HangoutFontSmallBold")
+	badge:SetPoint("CENTER", badgePill)
+	badge:SetJustifyH("CENTER")
 	badge:Hide()
 
 	button:SetScript("OnClick", function(self, mouseButton)
@@ -117,7 +167,8 @@ local function CreateMinimapButton()
 	button:SetScript("OnEnter", function(self)
 		GameTooltip:SetOwner(self, "ANCHOR_LEFT")
 		GameTooltip:SetText("Hangout")
-		GameTooltip:AddLine(L["Click to open. Right-click for options. Drag to move."], 1, 1, 1)
+		ns.Broker.AddUnreadLines(GameTooltip, true)
+		GameTooltip:AddLine(L["Click to open. Right-click for options. Drag to move."], 0.6, 0.6, 0.6)
 		GameTooltip:Show()
 	end)
 	button:SetScript("OnLeave", function() GameTooltip:Hide() end)
@@ -137,7 +188,8 @@ end
 ns.On("QUIET_CHANGED", Launcher.UpdateDndIcon)
 
 local updateBadgeSoon = ns.Util.Debounced(BADGE_DELAY, UpdateBadge)
-for _, message in ipairs({ "MESSAGE_ADDED", "LOCKED_ADDED", "LIVE_CHANGED", "CONV_CHANGED" }) do
+for _, message in ipairs({ "MESSAGE_ADDED", "LOCKED_ADDED", "LIVE_CHANGED", "CONV_CHANGED", "DND_CHANGED",
+	"QUIET_CHANGED", "THEME_CHANGED" }) do
 	ns.On(message, updateBadgeSoon)
 end
 
@@ -237,6 +289,8 @@ SlashCmdList.HANGOUT = function(input)
 		PrintConversation(tonumber(argument) or 0)
 	elseif command == "read" then
 		Launcher.MarkAllRead()
+	elseif command == "test" then
+		ns.TestMode.Run(argument)
 	elseif command == "combat" then
 		SetCombatMode(argument)
 	else

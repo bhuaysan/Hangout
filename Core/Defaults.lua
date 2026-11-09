@@ -9,6 +9,9 @@ ns.Defaults = {
 	sessionRing = 200,
 	combatMode = "fade", -- "fade", "hide" or "off"
 	combatOpacity = 20,
+	moveFade = true,
+	moveFadeOpacity = 40,
+	showNearby = true,
 	messageSize = 14,
 	windowOpacity = 97,
 	hideWhispers = false,
@@ -60,6 +63,7 @@ local CATEGORY_BY_PREFIX = {
 	I = "group",
 	C = "channel",
 	L = "live",
+	N = "nearby",
 }
 
 function ns.CategoryOf(key)

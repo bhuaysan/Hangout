@@ -108,6 +108,8 @@ function stubs.Install()
 		return "Shaman", "SHAMAN"
 	end
 	_G.InCombatLockdown = function() return stubs.inCombat end
+	stubs.moving = false
+	_G.IsPlayerMoving = function() return stubs.moving end
 	_G.GetTime = function() return stubs.time end
 	_G.PlaySound = function(kit) stubs.played[#stubs.played + 1] = kit end
 	_G.FlashClientIcon = function() stubs.flashes = stubs.flashes + 1 end
@@ -170,6 +172,7 @@ function stubs.Install()
 	_G.GetClassInfo = function(classID)
 		if classID == 7 then return "Schamane", "SHAMAN", 7 end
 	end
+	_G.ERR_CHAT_PLAYER_NOT_FOUND_S = "No player named '%s' is currently playing."
 	_G.print = function(text) stubs.printed[#stubs.printed + 1] = text end
 	_G.date = function(format, time)
 		if format == "%Y-%m-%d" then
@@ -178,14 +181,22 @@ function stubs.Install()
 		if format == "%Y-%m-%d %H:%M" then
 			return "day" .. math.floor((time or 0) / SECONDS_PER_DAY) .. " 12:00"
 		end
-		if format == "%B " then return "November " end
-		if format == "%b " then return "Nov " end
+		if format == "*t" then
+			local seconds = time or 0
+			return { year = 1970, month = 1, day = math.floor(seconds / SECONDS_PER_DAY) + 1,
+				hour = math.floor(seconds % SECONDS_PER_DAY / 3600), min = 0, sec = 0 }
+		end
+		if format == "%m" then return "11" end
 		if format == "%d" then return "08" end
 		if format == "%Y" then
 			return tostring(1970 + math.floor((time or 0) / (SECONDS_PER_DAY * 365)))
 		end
 		return "12:00"
 	end
+	_G.time = function(parts)
+		return (parts.day - 1) * SECONDS_PER_DAY + parts.hour * 3600 + parts.min * 60 + parts.sec
+	end
+	_G.GetInstanceInfo = function() return stubs.instanceName end
 	_G.C_AddOns = { GetAddOnMetadata = function() return "test" end }
 	_G.C_ChatInfo = {
 		InChatMessagingLockdown = function() return stubs.lockdown end,
@@ -221,7 +232,10 @@ function stubs.Install()
 	_G.C_Timer = {
 		After = function(_, callback) callback() end,
 		NewTicker = function() end,
-		NewTimer = function() return { Cancel = function() end } end,
+		NewTimer = function(_, callback)
+			stubs.lastTimer = callback
+			return { Cancel = function() end }
+		end,
 	}
 	_G.RAID_CLASS_COLORS = { SHAMAN = { r = 0, g = 0.44, b = 0.87 } }
 	_G.CLASS_ICON_TCOORDS = { SHAMAN = { 0.25, 0.5, 0.25, 0.5 } }
@@ -247,6 +261,7 @@ function stubs.Install()
 		rawset(frame, "UnregisterEvent", function(self, event) self.events[event] = nil end)
 		rawset(frame, "SetScript", function(self, name, handler) rawset(self, name, handler) end)
 		rawset(frame, "GetFrameLevel", function() return 1 end)
+		rawset(frame, "IsMouseOver", function() return stubs.mouseOver == true end)
 		stubs.frames[#stubs.frames + 1] = frame
 		return frame
 	end

@@ -34,7 +34,7 @@ end
 -- merely contain it, and ties keep the list's most-recent-first order. An empty query
 -- puts unread chats first. Requests are never offered.
 function QuickSwitch.Rank(list, query)
-	local needle = (query or ""):lower()
+	local needle = ns.Util.Lower(query or "")
 	local first, second = {}, {}
 	for _, entry in ipairs(list) do
 		local conv = entry.conv
@@ -47,7 +47,7 @@ function QuickSwitch.Rank(list, query)
 				local best
 				local names = { ns.Store.LabelFor(entry.key, conv), conv.name or entry.key:sub(3), conv.nick }
 				for _, name in pairs(names) do
-					local at = name:lower():find(needle, 1, true)
+					local at = ns.Util.Lower(name):find(needle, 1, true)
 					if at == 1 then
 						best = 1
 					elseif at and best ~= 1 then
@@ -73,9 +73,9 @@ end
 function QuickSwitch.NewWhisperName(list, query)
 	local name = ns.Util.NormalizeName(ns.Util.Trim(query or ""))
 	if not name or not name:find(" ", 1, true) then return nil end
-	local wanted = name:lower()
+	local wanted = ns.Util.Lower(name)
 	for _, entry in ipairs(list) do
-		if entry.key:sub(1, 2) == "W:" and entry.key:sub(3):lower() == wanted then
+		if entry.key:sub(1, 2) == "W:" and ns.Util.Lower(entry.key:sub(3)) == wanted then
 			return nil
 		end
 	end

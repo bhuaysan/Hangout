@@ -19,7 +19,8 @@ local rememberedRepeats = 0
 
 local function ContainsAny(lowerText, words)
 	for _, word in ipairs(words) do
-		if lowerText:find(word, 1, true) then return true end
+		-- Rules saved by older versions can still hold capital umlauts.
+		if lowerText:find(ns.Util.Lower(word), 1, true) then return true end
 	end
 	return false
 end
@@ -29,16 +30,16 @@ local function WordList(settingKey)
 end
 
 local function IsPlayerBlocked(name)
-	local lowerName = name:lower()
+	local lowerName = ns.Util.Lower(name)
 	for _, blocked in ipairs(WordList("blockedPlayers")) do
-		if blocked == lowerName then return true end
+		if ns.Util.Lower(blocked) == lowerName then return true end
 	end
 	return false
 end
 
 function Filter.BlocksWhisper(name, text, isStranger)
 	if IsPlayerBlocked(name) then return true end
-	return isStranger and ContainsAny(text:lower(), WordList("blockWords"))
+	return isStranger and ContainsAny(ns.Util.Lower(text), WordList("blockWords"))
 end
 
 local function IsRepeat(name, lowerText, now)
@@ -61,7 +62,7 @@ end
 -- Plain text matching only: rules are never treated as Lua patterns.
 function Filter.BlocksChannel(name, text, now)
 	if IsPlayerBlocked(name) then return true end
-	local lowerText = text:lower()
+	local lowerText = ns.Util.Lower(text)
 	if ContainsAny(lowerText, WordList("blockWords"))
 		or ContainsAny(lowerText, WordList("channelHideWords")) then
 		return true
@@ -94,9 +95,9 @@ end
 
 function Filter.BlockPlayer(name)
 	local list = {}
-	local lowerName = name:lower()
+	local lowerName = ns.Util.Lower(name)
 	for _, blocked in ipairs(WordList("blockedPlayers")) do
-		if blocked ~= lowerName then list[#list + 1] = blocked end
+		if ns.Util.Lower(blocked) ~= lowerName then list[#list + 1] = blocked end
 	end
 	list[#list + 1] = lowerName
 	ns.Set("blockedPlayers", list)

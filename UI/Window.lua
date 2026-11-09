@@ -18,6 +18,7 @@ local TITLE_LEFT_PLAIN = 42
 local TITLE_LEFT_WITH_AVATAR = HEADER_AVATAR_LEFT + HEADER_AVATAR_SIZE + 10
 local TITLE_RIGHT_RESERVE = 130
 local BANNER_HEIGHT = 24
+local BANNER_BUTTON_WIDTH = 90
 local RESIZE_REFRESH_DELAY = 0.1
 local EDGE_LEVEL_OFFSET = 35
 local GRIP_LEVEL_OFFSET = 40
@@ -25,6 +26,7 @@ local GRIP_LEVEL_OFFSET = 40
 local frame, title, subtitle, header, banner, messages, sidebar, emptyHint
 local collapseButton, closeButton, settingsButton, muteButton, pinButton, membersButton, avatar
 local composer, membersPanel
+local bannerText, bannerSend
 local membersOpen = false
 -- How far the composer's reply bar reaches into the body.
 local replyBarHeight = 0
@@ -184,17 +186,25 @@ local function CreateBanner()
 	banner:SetPoint("TOPRIGHT", header, "BOTTOMRIGHT", 0, -1)
 	banner:SetHeight(BANNER_HEIGHT)
 	ns.Widgets.Fill(banner, "notice")
-	local bannerText = ns.Widgets.Text(banner, "HangoutFontSmall", "text")
+	bannerText = ns.Widgets.Text(banner, "HangoutFontSmall", "text")
 	bannerText:SetPoint("LEFT", 12, 0)
 	bannerText:SetPoint("RIGHT", -12, 0)
 	bannerText:SetWordWrap(false)
-	bannerText:SetText(L["Chat is restricted right now. Hangout can't send, and will catch up when it ends."])
+
+	bannerSend = ns.Widgets.TextButton(banner, L["Send all"], "HangoutFontSmallBold")
+	bannerSend:SetSize(BANNER_BUTTON_WIDTH, BANNER_HEIGHT)
+	bannerSend:SetPoint("RIGHT", -6, 0)
+	bannerSend:SetScript("OnClick", function() ns.Outbox.SendAll() end)
+end
+
+local function BannerWanted()
+	return ns.Lockdown.IsActive() or ns.Outbox.Count() > 0
 end
 
 -- The messages end where the member panel begins, and the panel sits under the
 -- restriction banner just as the messages do. The composer stays full width.
 local function LayoutBody()
-	local top = ns.Lockdown.IsActive() and -(BANNER_HEIGHT + 1) or -1
+	local top = BannerWanted() and -(BANNER_HEIGHT + 1) or -1
 	-- The reply bar sits on the composer's top edge, so both columns end above it.
 	local bottom = 1 + replyBarHeight
 	messages:SetPoint("TOPLEFT", header, "BOTTOMLEFT", 0, top)
@@ -213,6 +223,7 @@ local function Create()
 	frame:SetResizable(true)
 	frame:SetResizeBounds(MIN_WIDTH, MIN_HEIGHT)
 	RestoreGeometry()
+	ns.MoveFade.Attach(frame)
 	ns.Widgets.RoundedFill(frame, "bg"):SetAllPoints()
 
 	frame:RegisterForDrag("LeftButton")
@@ -225,6 +236,7 @@ local function Create()
 	frame:SetScript("OnHide", function()
 		-- Hidden but still "shown" means the whole UI went away, as with Alt-Z.
 		hiddenWithUI = frame:IsShown()
+		ns.MoveFade.Reset(frame)
 		UpdateActive()
 		ns.MessageList.HideTooltip()
 		ns.Fire("WINDOW_HIDDEN")
@@ -283,8 +295,12 @@ end
 
 local function UpdateRestriction()
 	if not frame then return end
-	local active = ns.Lockdown.IsActive()
-	banner:SetShown(active)
+	local ready = ns.Outbox.IsReady()
+	banner:SetShown(BannerWanted())
+	bannerSend:SetShown(ready)
+	bannerText:SetPoint("RIGHT", ready and -(BANNER_BUTTON_WIDTH + 12) or -12, 0)
+	bannerText:SetText(ready and L["%d waiting messages are ready to send."]:format(ns.Outbox.Count())
+		or L["Chat is restricted right now. Hangout can't send, and will catch up when it ends."])
 	LayoutBody()
 	refreshAfterResize()
 end
@@ -306,6 +322,7 @@ function Window.SubtitleFor(key, conv)
 		return count ~= "" and L["Group chat  ·  %s"]:format(count) or L["Group chat"]
 	end
 	if category == "channel" then return L["Channel"] end
+	if category == "nearby" then return L["Say, yell and emotes around you"] end
 
 	local parts = {}
 	local status = ns.Identity.Status(key)
@@ -565,6 +582,14 @@ function Window.JumpTo(key, messageId)
 	ns.MessageList.ShowAt(messageId)
 end
 
+-- Opens the sidebar's search on a query, such as "is:saved".
+function Window.ShowSearch(query)
+	if not frame then Create() end
+	if not frame:IsShown() then ShowWindow() end
+	if ns.Get("sidebarCollapsed") then SetCollapsed(false) end
+	ns.Sidebar.SetSearch(query)
+end
+
 function Window.OpenSettings()
 	if not frame then Create() end
 	if not frame:IsShown() then ShowWindow() end
@@ -593,6 +618,7 @@ end
 ns.On("MESSAGE_ADDED", SelectIfEmpty)
 ns.On("LOCKED_ADDED", SelectIfEmpty)
 ns.On("LOCKDOWN_CHANGED", UpdateRestriction)
+ns.On("OUTBOX_CHANGED", UpdateRestriction)
 ns.On("TYPING_CHANGED", UpdateStatus)
 ns.On("ROSTER_CHANGED", UpdateStatus)
 ns.On("SETTINGS_TOGGLED", function(isOpen)

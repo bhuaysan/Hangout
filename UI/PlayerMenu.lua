@@ -22,7 +22,7 @@ local function RunWho(name)
 end
 
 local function IsWhisperWith(name)
-	return ns.selectedKey ~= nil and ns.selectedKey:lower() == ("W:" .. name):lower()
+	return ns.selectedKey ~= nil and ns.Util.Lower(ns.selectedKey) == ns.Util.Lower("W:" .. name)
 end
 
 -- What can be done with another player, from their name or crest in a message.

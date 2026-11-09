@@ -18,11 +18,12 @@ function Search.VisibleText(text)
 end
 
 -- Splits a query into filters and the words to look for. "from:Name" or
--- from:"First Last" limits who wrote the message, "in:this" limits the chat.
+-- from:"First Last" limits who wrote the message, "in:this" limits the chat,
+-- has:link, is:saved, before:2026-11-09 and after:9.11.2026 limit the messages.
 -- explicitScope tells whether the query chose a scope itself, so the sidebar's
 -- toggle only applies when it didn't.
 function Search.ParseQuery(text)
-	local rest = " " .. (text or ""):lower() .. " "
+	local rest = " " .. ns.Util.Lower(text or "") .. " "
 	local parsed = { from = nil, scope = "all", explicitScope = false }
 
 	rest = rest:gsub('%sfrom:"([^"]*)"', function(name)
@@ -51,6 +52,31 @@ function Search.ParseQuery(text)
 		return " in:" .. scope
 	end)
 
+	rest = rest:gsub("%shas:(%S+)", function(value)
+		if value == "link" then
+			parsed.hasLink = true
+			return " "
+		end
+		return " has:" .. value
+	end)
+	rest = rest:gsub("%sis:(%S+)", function(value)
+		if value == "saved" then
+			parsed.saved = true
+			return " "
+		end
+		return " is:" .. value
+	end)
+	for _, field in ipairs({ "before", "after" }) do
+		rest = rest:gsub("%s" .. field .. ":(%S+)", function(value)
+			local timestamp = ns.Util.ParseDate(value)
+			if timestamp then
+				parsed[field] = timestamp
+				return " "
+			end
+			return " " .. field .. ":" .. value
+		end)
+	end
+
 	parsed.needle = ns.Util.Trim((rest:gsub("%s+", " ")))
 	return parsed
 end
@@ -63,7 +89,7 @@ function Search.Highlight(text, needle, colorHex)
 	-- needle with a pipe could never be told apart from an escape.
 	text = text:gsub("|T.-|t", ""):gsub("|A.-|a", "")
 	if needle:find("|", 1, true) then return text end
-	local lowered = text:lower()
+	local lowered = ns.Util.Lower(text)
 	local pieces, position = {}, 1
 	while true do
 		local first, last = lowered:find(needle, position, true)
@@ -98,6 +124,10 @@ function Search.NewState(query, list, selectedKey, defaultScope)
 	return {
 		needle = parsed.needle,
 		from = parsed.from,
+		hasLink = parsed.hasLink,
+		saved = parsed.saved,
+		before = parsed.before,
+		after = parsed.after,
 		scope = scope,
 		list = list,
 		conversationIndex = 1,
@@ -114,9 +144,9 @@ local function SenderMatches(from, entry, message)
 	end
 	local sender = message.s or entry.conv.name
 	if not sender then return false end
-	sender = sender:lower()
+	sender = ns.Util.Lower(sender)
 	if sender:sub(1, #from) == from then return true end
-	return ns.Util.DisplayName(sender):lower():sub(1, #from) == from
+	return ns.Util.DisplayName(sender):sub(1, #from) == from
 end
 
 local function SenderOf(entry, message)
@@ -126,9 +156,13 @@ local function SenderOf(entry, message)
 end
 
 local function CheckMessage(state, entry, message)
+	if state.saved and not message.b then return end
+	if state.before and message.t >= state.before then return end
+	if state.after and message.t < state.after then return end
 	if state.from and not SenderMatches(state.from, entry, message) then return end
+	if state.hasLink and not ns.Links.HasUrl(message.x) then return end
 	local visible = Search.VisibleText(message.x)
-	if state.needle == "" or visible:lower():find(state.needle, 1, true) then
+	if state.needle == "" or ns.Util.Lower(visible):find(state.needle, 1, true) then
 		state.results[#state.results + 1] = {
 			key = entry.key,
 			id = message.i,

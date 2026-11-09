@@ -6,6 +6,62 @@ ns.Util = Util
 
 local MAX_BADGE = 99
 
+local MONTHS_SHORT = { L["Jan"], L["Feb"], L["Mar"], L["Apr"], L["May"], L["Jun"],
+	L["Jul"], L["Aug"], L["Sep"], L["Oct"], L["Nov"], L["Dec"] }
+local MONTHS_LONG = { L["January"], L["February"], L["March"], L["April"], L["May"], L["June"],
+	L["July"], L["August"], L["September"], L["October"], L["November"], L["December"] }
+
+-- Fills a translated date template. The game's date() only knows English month
+-- names, and German puts the day first.
+local function FillDate(template, timestamp, months)
+	return (template:gsub("{(%a+)}", {
+		month = months[tonumber(date("%m", timestamp))],
+		day = tonumber(date("%d", timestamp)),
+		year = date("%Y", timestamp),
+	}))
+end
+
+-- A date for labels. withYear is for dates from another year.
+function Util.LongDate(timestamp, withYear)
+	return FillDate(withYear and L["{month} {day}, {year}"] or L["{month} {day}"], timestamp, MONTHS_LONG)
+end
+
+-- The local midnight that ends the day of the given time.
+function Util.NextMidnight(now)
+	local parts = date("*t", now)
+	parts.day, parts.hour, parts.min, parts.sec = parts.day + 1, 0, 0, 0
+	return time(parts)
+end
+
+-- Local midnight of "2026-11-09" or "9.11.2026", or nil for anything else.
+function Util.ParseDate(text)
+	local year, month, day = text:match("^(%d%d%d%d)%-(%d%d?)%-(%d%d?)$")
+	if not year then
+		day, month, year = text:match("^(%d%d?)%.(%d%d?)%.(%d%d%d%d)$")
+	end
+	month, day = tonumber(month), tonumber(day)
+	if not month or month < 1 or month > 12 or day < 1 or day > 31 then return nil end
+	return time({ year = tonumber(year), month = month, day = day, hour = 0, min = 0, sec = 0 })
+end
+
+-- Lua only changes the case of ASCII, so names and words with umlauts need
+-- the two-byte Latin letters folded by hand. The byte length stays the same.
+local UPPER_RANGE, LOWER_RANGE = "\195([\128-\158])", "\195([\160-\190])"
+local MULTIPLY_SIGN, DIVISION_SIGN = 151, 183
+local CASE_OFFSET = 32
+
+function Util.Lower(text)
+	return (text:lower():gsub(UPPER_RANGE, function(tail)
+		if tail:byte() ~= MULTIPLY_SIGN then return "\195" .. string.char(tail:byte() + CASE_OFFSET) end
+	end))
+end
+
+function Util.Upper(text)
+	return (text:upper():gsub(LOWER_RANGE, function(tail)
+		if tail:byte() ~= DIVISION_SIGN then return "\195" .. string.char(tail:byte() - CASE_OFFSET) end
+	end))
+end
+
 -- Forever characters are "First Last" and realms are hidden. Chat events use
 -- that form, but whisper targets and links can also use "First-Last".
 -- Callers must only pass values that passed canaccessvalue.
@@ -30,7 +86,7 @@ function Util.ShortTime(timestamp, now)
 	if date("%Y-%m-%d", timestamp) == date("%Y-%m-%d", now - 86400) then
 		return L["Yesterday"]
 	end
-	return date("%b ", timestamp) .. tonumber(date("%d", timestamp))
+	return FillDate(L["{month} {day}"], timestamp, MONTHS_SHORT)
 end
 
 function Util.Trim(text)
@@ -57,7 +113,7 @@ end
 function Util.ParseList(text)
 	local list = {}
 	for entry in text:gmatch("[^,]+") do
-		entry = Util.Trim(entry):lower()
+		entry = Util.Lower(Util.Trim(entry))
 		if entry ~= "" then list[#list + 1] = entry end
 	end
 	return list
