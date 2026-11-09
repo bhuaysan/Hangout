@@ -1,4 +1,5 @@
 local _, ns = ...
+local L = ns.L
 
 local Window = {}
 ns.Window = Window
@@ -135,7 +136,7 @@ local function CreateHeader()
 	header:SetHeight(HEADER_HEIGHT)
 	ns.Widgets.RoundedFill(header, "raised", nil, "topRight"):SetAllPoints()
 
-	collapseButton = HeaderButton("collapse", "Show or hide the sidebar")
+	collapseButton = HeaderButton("collapse", L["Show or hide the sidebar"])
 	collapseButton:SetPoint("LEFT", 8, 0)
 	collapseButton:SetScript("OnClick", function()
 		SetCollapsed(not ns.Get("sidebarCollapsed"))
@@ -150,24 +151,24 @@ local function CreateHeader()
 	subtitle = ns.Widgets.Text(header, "HangoutFontSmall", "muted")
 	subtitle:SetWordWrap(false)
 
-	closeButton = HeaderButton("close", "Close")
+	closeButton = HeaderButton("close", L["Close"])
 	closeButton:SetPoint("RIGHT", -8, 0)
 	closeButton:SetScript("OnClick", function() frame:Hide() end)
 
-	settingsButton = HeaderButton("gear", "Settings")
+	settingsButton = HeaderButton("gear", L["Settings"])
 	settingsButton:SetPoint("RIGHT", closeButton, "LEFT", -2, 0)
 	settingsButton:SetScript("OnClick", function() ns.SettingsUI.Toggle() end)
 
-	muteButton = HeaderButton("mute", "Mute this chat")
+	muteButton = HeaderButton("mute", L["Mute this chat"])
 	muteButton:SetPoint("RIGHT", closeButton, "LEFT", -2, 0)
 	muteButton:SetScript("OnClick", function() ToggleField("mute") end)
 
-	pinButton = HeaderButton("pin", "Pin this chat")
+	pinButton = HeaderButton("pin", L["Pin this chat"])
 	pinButton:SetPoint("RIGHT", muteButton, "LEFT", -2, 0)
 	pinButton:SetScript("OnClick", function() ToggleField("pin") end)
 
 	-- The guild icon doubles as the members icon. UpdateTitle places it next to the pin.
-	membersButton = HeaderButton("guild", "Show or hide the member list")
+	membersButton = HeaderButton("guild", L["Show or hide the member list"])
 	membersButton:SetPoint("RIGHT", pinButton, "LEFT", -2, 0)
 	membersButton:SetScript("OnClick", function()
 		ns.Set("showMembers", not ns.Get("showMembers"))
@@ -185,7 +186,7 @@ local function CreateBanner()
 	bannerText:SetPoint("LEFT", 12, 0)
 	bannerText:SetPoint("RIGHT", -12, 0)
 	bannerText:SetWordWrap(false)
-	bannerText:SetText("Chat is restricted right now. Hangout can't send, and will catch up when it ends.")
+	bannerText:SetText(L["Chat is restricted right now. Hangout can't send, and will catch up when it ends."])
 end
 
 -- The messages end where the member panel begins, and the panel sits under the
@@ -266,7 +267,7 @@ local function Create()
 	emptyHint:SetPoint("LEFT", 24, 0)
 	emptyHint:SetPoint("RIGHT", -24, 0)
 	emptyHint:SetJustifyH("CENTER")
-	emptyHint:SetText("Use the + next to Search to whisper someone. Chats also appear here when someone messages you.")
+	emptyHint:SetText(L["Use the + next to Search to whisper someone. Chats also appear here when someone messages you."])
 	emptyHint:Hide()
 
 	ns.SettingsUI.Create(frame, header)
@@ -283,22 +284,22 @@ local function UpdateRestriction()
 end
 
 local STATUS_LABEL = {
-	online = "Online",
-	afk = "AFK",
-	dnd = "Do Not Disturb",
-	offline = "Offline",
+	online = L["Online"],
+	afk = L["AFK"],
+	dnd = L["Do Not Disturb"],
+	offline = L["Offline"],
 }
 
 -- The small line under a chat's name.
 function Window.SubtitleFor(key, conv)
-	if ns.Protocol.IsTyping(key) then return "typing..." end
+	if ns.Protocol.IsTyping(key) then return L["typing..."] end
 
 	local category = ns.CategoryOf(key)
 	if category == "group" then
 		local count = ns.Members.SubtitleCount(key)
-		return count ~= "" and ("Group chat  ·  " .. count) or "Group chat"
+		return count ~= "" and L["Group chat  ·  %s"]:format(count) or L["Group chat"]
 	end
-	if category == "channel" then return "Channel" end
+	if category == "channel" then return L["Channel"] end
 
 	local parts = {}
 	local status = ns.Identity.Status(key)
@@ -360,11 +361,11 @@ local function UpdateTitle()
 	local showsChat = conv ~= nil and not settingsOpen
 
 	if settingsOpen then
-		title:SetText("Settings")
+		title:SetText(L["Settings"])
 	elseif conv then
 		title:SetText(ns.Store.LabelFor(ns.selectedKey, conv))
 	else
-		title:SetText(hasChats and "Select a conversation" or "No conversations yet")
+		title:SetText(hasChats and L["Select a conversation"] or L["No conversations yet"])
 	end
 	emptyHint:SetShown(not hasChats)
 

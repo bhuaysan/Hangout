@@ -1,4 +1,5 @@
 local _, ns = ...
+local L = ns.L
 
 local MessageList = {}
 ns.MessageList = MessageList
@@ -32,7 +33,7 @@ local QUOTE_HEIGHT = 18
 local QUOTE_BAR_WIDTH = 2
 local QUOTE_TEXT_CHARS = 80
 local QUOTE_MIN_BUBBLE_WIDTH = 160
-local REPLY_BUTTON_WIDTH = 44
+local REPLY_BUTTON_WIDTH = 62
 
 local BUBBLE_PAD_X = 10
 local BUBBLE_PAD_Y = 6
@@ -46,12 +47,12 @@ local BUBBLE_TIME_GAP = 6
 local BUBBLE_TIME_ROOM = 40
 
 local REACTION_NAMES = {
-	thumbsup = "Thumbs up",
-	heart = "Heart",
-	joy = "Laughing",
-	tada = "Celebrate",
-	thinking = "Thinking",
-	sob = "Crying",
+	thumbsup = L["Thumbs up"],
+	heart = L["Heart"],
+	joy = L["Laughing"],
+	tada = L["Celebrate"],
+	thinking = L["Thinking"],
+	sob = L["Crying"],
 }
 
 -- Link types GameTooltip can show. Names, URLs and the like have no tooltip.
@@ -74,7 +75,7 @@ local shownElements = {}
 local toolbar, toolbarRow
 
 local function SenderOf(message, conv)
-	if message.o == 1 then return ns.Store.AltName(message) or "You" end
+	if message.o == 1 then return ns.Store.AltName(message) or L["You"] end
 	if message.s then return ns.Store.SenderLabel(message.s) end
 	return conv.nick or ns.Util.DisplayName(conv.name or "?")
 end
@@ -95,8 +96,8 @@ end
 -- The separator text for the day a message was sent.
 function MessageList.DayLabel(timestamp, now)
 	local day = date("%Y-%m-%d", timestamp)
-	if day == date("%Y-%m-%d", now) then return "Today" end
-	if day == date("%Y-%m-%d", now - SECONDS_PER_DAY) then return "Yesterday" end
+	if day == date("%Y-%m-%d", now) then return L["Today"] end
+	if day == date("%Y-%m-%d", now - SECONDS_PER_DAY) then return L["Yesterday"] end
 
 	local label = date("%B ", timestamp) .. tonumber(date("%d", timestamp))
 	if date("%Y", timestamp) ~= date("%Y", now) then
@@ -133,7 +134,7 @@ function MessageList.BuildElements(conv, limit, live, unreadAfterId, key)
 	local messages = conv.m
 	local first = math.max(1, #messages - limit + 1)
 	if first > 1 then
-		elements[1] = { kind = "older", label = "Load older messages" }
+		elements[1] = { kind = "older", label = L["Load older messages"] }
 	end
 
 	local now = GetServerTime()
@@ -150,7 +151,7 @@ function MessageList.BuildElements(conv, limit, live, unreadAfterId, key)
 		end
 
 		if unreadAfterId and not dividerPlaced and message.i > unreadAfterId and message.o ~= 1 then
-			elements[#elements + 1] = { kind = "unread", label = "New messages" }
+			elements[#elements + 1] = { kind = "unread", label = L["New messages"] }
 			dividerPlaced = true
 			previous = nil
 		end
@@ -187,7 +188,7 @@ function MessageList.BuildElements(conv, limit, live, unreadAfterId, key)
 	end
 
 	if seenPosition then
-		table.insert(elements, seenPosition + 1, { kind = "seen", label = "Seen" })
+		table.insert(elements, seenPosition + 1, { kind = "seen", label = L["Seen"] })
 	end
 
 	-- Locked messages arrive while restricted, so they are always the newest.
@@ -278,7 +279,7 @@ end
 local function CopyConversation(key)
 	local conv = ns.Store.Get(key)
 	if not conv then return end
-	ns.CopyBox.Show("Conversation with " .. ns.Store.LabelFor(key, conv), MessageList.ConversationText(key, conv))
+	ns.CopyBox.Show(L["Conversation with %s"]:format(ns.Store.LabelFor(key, conv)), MessageList.ConversationText(key, conv))
 end
 
 -- Kept so callers and tests that predate ns.PlayerMenu still work.
@@ -312,7 +313,7 @@ local function OnHyperlinkLeave()
 end
 
 local function AddReactionItems(root, messageId)
-	root:CreateTitle("React")
+	root:CreateTitle(L["React"])
 	for _, emoji in ipairs(ns.Protocol.QUICK_REACTIONS) do
 		local item = root:CreateCheckbox(ns.Emoji.Tag(emoji) .. "  " .. REACTION_NAMES[emoji],
 			function() return ns.Protocol.HasMyReaction(ns.selectedKey, messageId, emoji) end,
@@ -329,16 +330,16 @@ end
 
 -- Says why instead of leaving the reactions out without a word.
 local function AddReactionsUnavailable(root)
-	local reason = ns.Lockdown.IsActive() and "Not available while chat is restricted"
-		or "Only works with other Hangout users"
-	root:CreateTitle("React")
+	local reason = ns.Lockdown.IsActive() and L["Not available while chat is restricted"]
+		or L["Only works with other Hangout users"]
+	root:CreateTitle(L["React"])
 	root:CreateButton(reason):SetEnabled(false)
 end
 
 local function ShowMessageMenu(owner, element)
 	local key = ns.selectedKey
 	MenuUtil.CreateContextMenu(owner, function(_, root)
-		root:CreateButton("Reply", function() ns.Composer.SetReply(key, element.id) end)
+		root:CreateButton(L["Reply"], function() ns.Composer.SetReply(key, element.id) end)
 		root:CreateDivider()
 		if ns.Protocol.CanReact(key) then
 			AddReactionItems(root, element.id)
@@ -347,10 +348,10 @@ local function ShowMessageMenu(owner, element)
 			AddReactionsUnavailable(root)
 			root:CreateDivider()
 		end
-		root:CreateButton("Copy message", function()
-			ns.CopyBox.Show("Copy message", ns.CopyBox.PlainText(element.raw))
+		root:CreateButton(L["Copy message"], function()
+			ns.CopyBox.Show(L["Copy message"], ns.CopyBox.PlainText(element.raw))
 		end)
-		root:CreateButton("Copy conversation", function() CopyConversation(key) end)
+		root:CreateButton(L["Copy conversation"], function() CopyConversation(key) end)
 	end)
 end
 
@@ -439,7 +440,7 @@ local function CreateToolbar(parent)
 
 	-- No reply icon exists in the icon image, and an arrow glyph may be missing
 	-- from the font, so the button says what it does.
-	local reply = ns.Widgets.TextButton(toolbar, "Reply", "HangoutFontSmall")
+	local reply = ns.Widgets.TextButton(toolbar, L["Reply"], "HangoutFontSmall")
 	reply:SetSize(REPLY_BUTTON_WIDTH, TOOLBAR_BUTTON_SIZE)
 	reply:SetPoint("LEFT", TOOLBAR_PADDING, 0)
 	reply:SetScript("OnClick", function()
@@ -451,7 +452,7 @@ local function CreateToolbar(parent)
 		CreateQuickButton(emoji, index)
 	end
 
-	local more = ns.Widgets.IconButton(toolbar, "smile", TOOLBAR_BUTTON_SIZE, 15, "More reactions")
+	local more = ns.Widgets.IconButton(toolbar, "smile", TOOLBAR_BUTTON_SIZE, 15, L["More reactions"])
 	more:SetPoint("LEFT", TOOLBAR_PADDING + REPLY_BUTTON_WIDTH + #QUICK_BAR * TOOLBAR_BUTTON_SIZE, 0)
 	toolbar.reactionButtons[#toolbar.reactionButtons + 1] = more
 	more:SetScript("OnClick", function()
@@ -534,7 +535,7 @@ local function BuildRow(frame)
 	frame.sender:SetPoint("TOPLEFT", TEXT_LEFT, -4)
 
 	frame.gmTag = ns.Widgets.Text(frame, "HangoutFontSmallBold", "accent")
-	frame.gmTag:SetText("GM")
+	frame.gmTag:SetText(L["GM"])
 
 	frame.time = ns.Widgets.Text(frame, "HangoutFontSmall", "muted")
 
@@ -673,8 +674,8 @@ local function LayoutBubble(frame, element)
 		frame.time:SetPoint("BOTTOMLEFT", frame.bubble, "BOTTOMRIGHT", BUBBLE_TIME_GAP, 2)
 	end
 	-- A message sent from another character still says which one.
-	local timeText = outgoing and element.sender ~= "You" and (element.sender .. "  " .. element.time) or element.time
-	frame.time:SetText(element.gm and ("GM  " .. timeText) or timeText)
+	local timeText = outgoing and element.sender ~= L["You"] and (element.sender .. "  " .. element.time) or element.time
+	frame.time:SetText(element.gm and (L["GM"] .. "  " .. timeText) or timeText)
 end
 
 local function OnPillClick(self)
@@ -808,12 +809,12 @@ local function InitLockedRow(frame, element)
 		frame.lockedBody:SetMaxLines(LOCKED_MAX_LINES)
 	end
 
-	frame.lockedMeta:SetText(element.time .. "  Restricted")
+	frame.lockedMeta:SetText(element.time .. "  " .. L["Restricted"])
 	frame.lockedBody:ClearText()
 	if element.outgoing then
-		frame.lockedBody:SetText("You: " .. element.text)
+		frame.lockedBody:SetText(L["You: %s"]:format(element.text))
 	else
-		frame.lockedBody:SetText(element.sender .. ": " .. element.text)
+		frame.lockedBody:SetText(L["%s: %s"]:format(element.sender, element.text))
 	end
 end
 
@@ -844,9 +845,9 @@ local JUMP_RAISE = 8
 
 -- The wording of the jump pill: plain until messages arrive while scrolled away.
 function MessageList.JumpLabel(count)
-	if not count or count <= 0 then return "Jump to latest" end
-	if count == 1 then return "1 new message" end
-	return count .. " new messages"
+	if not count or count <= 0 then return L["Jump to latest"] end
+	if count == 1 then return L["1 new message"] end
+	return L["%d new messages"]:format(count)
 end
 
 -- Whether the list sits at its end, where new messages are followed.
@@ -913,8 +914,8 @@ function MessageList.OpenerFor(key, conv)
 		label = label,
 		muted = conv.mute,
 		title = label,
-		text = IsWhisper(key) and ("This is the start of your saved history with " .. label .. ".")
-			or "Your history for this chat starts here.",
+		text = IsWhisper(key) and L["This is the start of your saved history with %s."]:format(label)
+			or L["Your history for this chat starts here."],
 	}
 end
 

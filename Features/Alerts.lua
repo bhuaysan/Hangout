@@ -1,4 +1,5 @@
 local _, ns = ...
+local L = ns.L
 
 local Alerts = {}
 ns.Alerts = Alerts
@@ -13,15 +14,15 @@ local SOUND_KITS = {
 }
 
 local CHOICES = {
-	{ value = "off", label = "Off" },
-	{ value = "ping", label = "Ping" },
+	{ value = "off", label = L["Off"] },
+	{ value = "ping", label = L["Ping"] },
 	{ value = "battlenet", label = "Battle.net" },
-	{ value = "whisper", label = "Whisper" },
-	{ value = "ready", label = "Ready check" },
+	{ value = "whisper", label = L["Whisper"] },
+	{ value = "ready", label = L["Ready check"] },
 }
 
 -- The game already plays a whisper sound, so "default" means Hangout adds none.
-local WHISPER_CHOICES = { { value = "default", label = "Game default" } }
+local WHISPER_CHOICES = { { value = "default", label = L["Game default"] } }
 for _, choice in ipairs(CHOICES) do
 	WHISPER_CHOICES[#WHISPER_CHOICES + 1] = choice
 end

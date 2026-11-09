@@ -1,4 +1,5 @@
 local _, ns = ...
+local L = ns.L
 
 local QuickSwitch = {}
 ns.QuickSwitch = QuickSwitch
@@ -13,19 +14,19 @@ local ROOM_ICON_SIZE = 14
 local ROW_INSET = 4
 
 local HINT_BY_PREFIX = {
-	W = "Whisper",
-	B = "Battle.net",
-	G = "Guild",
-	O = "Officer",
-	P = "Party",
-	R = "Raid",
-	I = "Instance",
-	C = "Channel",
-	L = "Restricted",
+	W = L["Whisper"],
+	B = L["Battle.net"],
+	G = L["Guild"],
+	O = L["Officer"],
+	P = L["Party"],
+	R = L["Raid"],
+	I = L["Instance"],
+	C = L["Channel"],
+	L = L["Restricted"],
 }
 
 function QuickSwitch.Hint(key)
-	return HINT_BY_PREFIX[key:sub(1, 1)] or "Chat"
+	return HINT_BY_PREFIX[key:sub(1, 1)] or L["Chat"]
 end
 
 -- Ranks chats for a typed query and returns their keys. Matches the label, the raw name
@@ -122,17 +123,17 @@ local function PaintRow(row, result, index)
 	row.index = index
 	local info = InfoFor(result)
 	ns.Widgets.ShowChatAvatar(row.avatar, info)
-	row.label:SetText(result.whisper and ("Whisper " .. result.whisper) or info.label)
+	row.label:SetText(result.whisper and L["Whisper %s"]:format(result.whisper) or info.label)
 	if info.class and not info.muted then
 		row.label:SetTextColor(ns.Theme.ClassColor(info.class, "sidebar"))
 	else
 		row.label:SetTextColor(ns.Theme.Color(info.muted and "muted" or "text"))
 	end
 
-	local hint = result.whisper and "New" or QuickSwitch.Hint(result.key)
+	local hint = result.whisper and L["New"] or QuickSwitch.Hint(result.key)
 	local unread = result.key and ns.Store.UnreadCount(result.key, conversations[result.key]) or 0
 	if unread > 0 then
-		hint = hint .. "  -  " .. ns.Util.BadgeText(unread) .. " unread"
+		hint = hint .. "  -  " .. L["%s unread"]:format(ns.Util.BadgeText(unread))
 	end
 	row.hint:SetText(hint)
 end
@@ -240,7 +241,7 @@ local function Create()
 
 	local placeholder = ns.Widgets.Text(holder, "HangoutFontSmall", "muted")
 	placeholder:SetPoint("LEFT", 8, 0)
-	placeholder:SetText("Jump to a chat, or type a name to whisper")
+	placeholder:SetText(L["Jump to a chat, or type a name to whisper"])
 	field:SetScript("OnTextChanged", function(self)
 		placeholder:SetShown(self:GetText() == "")
 		selected = 1

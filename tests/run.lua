@@ -3569,6 +3569,19 @@ Test("a reply in a chat without Hangout users carries a visible quote", function
 	Equal(conv.m[#conv.m].q, nil)
 end)
 
+Test("the German locale translates known keys and falls back to the key itself", function()
+	local english = Load()
+	Equal(english.L["Settings"], "Settings")
+	stubs.Install()
+	stubs.locale = "deDE"
+	local ns = {}
+	for _, path in ipairs(TocFiles()) do
+		assert(loadfile(path))("Hangout", ns)
+	end
+	Equal(ns.L["Settings"], "Einstellungen")
+	Equal(ns.L["No such key anywhere"], "No such key anywhere")
+end)
+
 local failures = 0
 for _, test in ipairs(tests) do
 	local ok, err = xpcall(test.fn, debug.traceback)

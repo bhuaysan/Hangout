@@ -1,4 +1,5 @@
 local _, ns = ...
+local L = ns.L
 
 -- A LibDataBroker feed for display addons such as Titan Panel, Bazooka and
 -- ChocolateBar. Hangout embeds no libraries, so this stays idle unless one of
@@ -16,9 +17,9 @@ local dataObject
 function Broker.Text(total, dnd, quiet)
 	local text = ns.Util.BadgeText(total)
 	if dnd then
-		text = text .. " (DND)"
+		text = text .. " (" .. L["DND"] .. ")"
 	elseif quiet then
-		text = text .. " (Quiet)"
+		text = text .. " (" .. L["Quiet"] .. ")"
 	end
 	return text
 end
@@ -49,12 +50,12 @@ local function ShowTooltip(tooltip)
 	tooltip:AddLine("Hangout")
 	local lines = Broker.TooltipLines(ns.Store.List())
 	if #lines == 0 then
-		tooltip:AddLine("No unread messages", 1, 1, 1)
+		tooltip:AddLine(L["No unread messages"], 1, 1, 1)
 	end
 	for _, line in ipairs(lines) do
 		tooltip:AddDoubleLine(line.name, line.count, 1, 1, 1, 1, 1, 1)
 	end
-	tooltip:AddLine("Click to open. Right-click for options.", 0.6, 0.6, 0.6)
+	tooltip:AddLine(L["Click to open. Right-click for options."], 0.6, 0.6, 0.6)
 end
 
 -- Returns true if a data object was created. Safe without LibDataBroker.

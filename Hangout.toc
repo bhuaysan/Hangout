@@ -7,6 +7,8 @@
 ## AddonCompartmentFunc: Hangout_OnCompartmentClick
 
 Core\Init.lua
+Locales\Locales.lua
+Locales\deDE.lua
 Core\Util.lua
 Core\Defaults.lua
 Core\DB.lua

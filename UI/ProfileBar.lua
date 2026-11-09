@@ -1,4 +1,5 @@
 local _, ns = ...
+local L = ns.L
 
 local ProfileBar = {}
 ns.ProfileBar = ProfileBar
@@ -11,9 +12,9 @@ local TEXT_LEFT = CREST_LEFT + CREST_SIZE + 10
 local BUTTON_SIZE = 28
 local ICON_SIZE = 17
 local STATUSES = {
-	online = { label = "Online", icon = "Interface\\FriendsFrame\\StatusIcon-Online" },
-	afk = { label = "AFK", icon = "Interface\\FriendsFrame\\StatusIcon-Away" },
-	dnd = { label = "Do Not Disturb", icon = "Interface\\FriendsFrame\\StatusIcon-DnD" },
+	online = { label = L["Online"], icon = "Interface\\FriendsFrame\\StatusIcon-Online" },
+	afk = { label = L["AFK"], icon = "Interface\\FriendsFrame\\StatusIcon-Away" },
+	dnd = { label = L["Do Not Disturb"], icon = "Interface\\FriendsFrame\\StatusIcon-DnD" },
 }
 local STATUS_ORDER = { "online", "afk", "dnd" }
 
@@ -43,7 +44,7 @@ end
 -- Whatever is being turned off goes first, so the order suits the server.
 local function ApplyGameStatus(wantAfk, wantDnd)
 	if ns.Lockdown.IsActive() then
-		ns.Print("Chat is restricted right now, so your game status can't change. Use /afk or /dnd in normal chat.")
+		ns.Print(L["Chat is restricted right now, so your game status can't change. Use /afk or /dnd in normal chat."])
 		return
 	end
 	local afk, dnd = IsGameAfk(), IsGameDnd()
@@ -69,7 +70,7 @@ end
 -- AFK and Do Not Disturb win over automatic quiet mode, which only replaces "Online".
 function ProfileBar.StatusLabel(status, quietReason)
 	if status == "online" and quietReason then
-		return "Quiet \194\183 " .. ns.Quiet.Label(quietReason)
+		return L["Quiet \194\183 %s"]:format(ns.Quiet.Label(quietReason))
 	end
 	return STATUSES[status].label
 end
@@ -87,14 +88,14 @@ end
 
 local function ShowStatusMenu(owner)
 	MenuUtil.CreateContextMenu(owner, function(_, root)
-		root:CreateTitle("Status")
+		root:CreateTitle(L["Status"])
 		for _, status in ipairs(STATUS_ORDER) do
 			root:CreateRadio(STATUSES[status].label,
 				function() return ProfileBar.CurrentStatus() == status end,
 				function() ProfileBar.SetStatus(status) end)
 		end
 		root:CreateDivider()
-		root:CreateButton("Mark all as read", function() ns.Launcher.MarkAllRead() end)
+		root:CreateButton(L["Mark all as read"], function() ns.Launcher.MarkAllRead() end)
 	end)
 end
 
@@ -117,7 +118,7 @@ local function CreateStatusButton()
 	statusButton:SetScript("OnEnter", function(self)
 		hover:Show()
 		GameTooltip:SetOwner(self, "ANCHOR_TOP")
-		GameTooltip:SetText("Change your status")
+		GameTooltip:SetText(L["Change your status"])
 		GameTooltip:Show()
 	end)
 	statusButton:SetScript("OnLeave", function()
@@ -142,7 +143,7 @@ function ProfileBar.Create(parent)
 	statusDot:SetSize(14, 14)
 	statusDot:SetPoint("CENTER", crest, "BOTTOMRIGHT", -2, 2)
 
-	settingsButton = ns.Widgets.IconButton(bar, "gear", BUTTON_SIZE, ICON_SIZE, "Settings")
+	settingsButton = ns.Widgets.IconButton(bar, "gear", BUTTON_SIZE, ICON_SIZE, L["Settings"])
 	settingsButton:SetPoint("RIGHT", -8, 0)
 	ns.Widgets.RoundedFill(settingsButton, "selected"):SetAllPoints()
 	settingsButton:SetScript("OnClick", function() ns.SettingsUI.Toggle() end)

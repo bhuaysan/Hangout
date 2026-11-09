@@ -1,4 +1,5 @@
 local _, ns = ...
+local L = ns.L
 
 local Launcher = {}
 ns.Launcher = Launcher
@@ -60,18 +61,18 @@ end
 
 function Launcher.MarkAllRead()
 	local count = ns.Store.MarkAllRead()
-	ns.Print(count > 0 and ("Marked " .. count .. (count == 1 and " chat" or " chats") .. " as read.")
-		or "Nothing to mark as read.")
+	ns.Print(count > 0 and (count == 1 and L["Marked 1 chat as read."] or L["Marked %d chats as read."]:format(count))
+		or L["Nothing to mark as read."])
 end
 
 function Launcher.ShowMenu(owner)
 	MenuUtil.CreateContextMenu(owner, function(_, root)
 		root:CreateTitle("Hangout")
-		root:CreateCheckbox("Do Not Disturb",
+		root:CreateCheckbox(L["Do Not Disturb"],
 			function() return ns.Get("dnd") end,
 			function() Launcher.SetDnd(not ns.Get("dnd")) end)
-		root:CreateButton("Mark all as read", Launcher.MarkAllRead)
-		root:CreateButton("Settings", function() ns.Window.OpenSettings() end)
+		root:CreateButton(L["Mark all as read"], Launcher.MarkAllRead)
+		root:CreateButton(L["Settings"], function() ns.Window.OpenSettings() end)
 	end)
 end
 
@@ -116,7 +117,7 @@ local function CreateMinimapButton()
 	button:SetScript("OnEnter", function(self)
 		GameTooltip:SetOwner(self, "ANCHOR_LEFT")
 		GameTooltip:SetText("Hangout")
-		GameTooltip:AddLine("Click to open. Right-click for options. Drag to move.", 1, 1, 1)
+		GameTooltip:AddLine(L["Click to open. Right-click for options. Drag to move."], 1, 1, 1)
 		GameTooltip:Show()
 	end)
 	button:SetScript("OnLeave", function() GameTooltip:Hide() end)
@@ -142,10 +143,10 @@ end
 
 -- Global entry points for Bindings.xml and the addon compartment ---------------
 
-BINDING_NAME_HANGOUT_TOGGLE = "Open or close Hangout"
-BINDING_NAME_HANGOUT_REPLY = "Reply to the newest message"
-BINDING_NAME_HANGOUT_NEXT_UNREAD = "Open the next unread chat"
-BINDING_NAME_HANGOUT_QUICK_SWITCH = "Quick switch to a chat"
+BINDING_NAME_HANGOUT_TOGGLE = L["Open or close Hangout"]
+BINDING_NAME_HANGOUT_REPLY = L["Reply to the newest message"]
+BINDING_NAME_HANGOUT_NEXT_UNREAD = L["Open the next unread chat"]
+BINDING_NAME_HANGOUT_QUICK_SWITCH = L["Quick switch to a chat"]
 
 function Hangout_Toggle()
 	ns.Window.Toggle()
@@ -174,27 +175,27 @@ end
 
 local function PrintList()
 	local list = ns.Store.List()
-	ns.Print(#list .. " conversations. Use /hangout show <number> to read one.")
+	ns.Print(L["%d conversations. Use /hangout show <number> to read one."]:format(#list))
 	for i = 1, #list do
 		local entry = list[i]
-		local saved = ns.Store.IsPersistent(entry.key) and "" or " (not saved)"
+		local saved = ns.Store.IsPersistent(entry.key) and "" or L[" (not saved)"]
 		local live = ns.Store.GetLive(entry.key)
-		local locked = live and (" +" .. #live .. " restricted") or ""
-		print(i .. ". " .. (entry.conv.name or entry.key) .. ": " .. #entry.conv.m .. " messages" .. locked .. saved)
+		local locked = live and L[" +%d restricted"]:format(#live) or ""
+		print(L["%d. %s: %d messages%s%s"]:format(i, entry.conv.name or entry.key, #entry.conv.m, locked, saved))
 	end
 end
 
 local function PrintConversation(index)
 	local entry = ns.Store.List()[index]
 	if not entry then
-		ns.Print("No conversation with that number.")
+		ns.Print(L["No conversation with that number."])
 		return
 	end
 	local messages = entry.conv.m
 	ns.Print(entry.conv.name or entry.key)
 	for i = math.max(1, #messages - PREVIEW_LINES + 1), #messages do
 		local message = messages[i]
-		local who = message.o == 1 and (ns.Store.AltName(message) or "You") or (message.s or entry.conv.name or "?")
+		local who = message.o == 1 and (ns.Store.AltName(message) or L["You"]) or (message.s or entry.conv.name or "?")
 		print(date("%m-%d %H:%M", message.t) .. " " .. who .. ": " .. message.x)
 	end
 end
@@ -204,9 +205,9 @@ local COMBAT_MODES = { fade = true, hide = true, off = true }
 local function SetCombatMode(mode)
 	if COMBAT_MODES[mode] then
 		ns.Set("combatMode", mode)
-		ns.Print("In combat the window will now: " .. mode .. ".")
+		ns.Print(L["In combat the window will now: %s."]:format(mode))
 	else
-		ns.Print("Use /hangout combat fade, hide or off. Current: " .. ns.Get("combatMode") .. ".")
+		ns.Print(L["Use /hangout combat fade, hide or off. Current: %s."]:format(ns.Get("combatMode")))
 	end
 end
 
@@ -218,8 +219,8 @@ local function HandleKeyword(argument)
 		ns.Alerts.RemoveKeyword(word)
 	end
 	local keywords = ns.Get("keywords") or {}
-	ns.Print("Keywords: " .. (#keywords > 0 and table.concat(keywords, ", ") or "none")
-		.. ". Use /hangout keyword add <word> or remove <word>.")
+	ns.Print(L["Keywords: %s. Use /hangout keyword add <word> or remove <word>."]:format(
+		#keywords > 0 and table.concat(keywords, ", ") or L["none"]))
 end
 
 SLASH_HANGOUT1 = "/hangout"
@@ -227,7 +228,7 @@ SlashCmdList.HANGOUT = function(input)
 	local command, argument = input:match("^(%S*)%s*(.-)$")
 	if command == "dnd" then
 		Launcher.SetDnd(not ns.Get("dnd"))
-		ns.Print("Do Not Disturb is " .. (ns.Get("dnd") and "on" or "off") .. ".")
+		ns.Print(ns.Get("dnd") and L["Do Not Disturb is on."] or L["Do Not Disturb is off."])
 	elseif command == "keyword" then
 		HandleKeyword(argument)
 	elseif command == "list" then

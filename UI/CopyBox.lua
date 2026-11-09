@@ -1,4 +1,5 @@
 local _, ns = ...
+local L = ns.L
 
 local CopyBox = {}
 ns.CopyBox = CopyBox
@@ -98,13 +99,13 @@ local function Create()
 
 	local hint = ns.Widgets.Text(frame, "HangoutFontSmall", "muted")
 	hint:SetPoint("BOTTOMLEFT", SIDE, 52)
-	hint:SetText("Ctrl+C copies the selected text")
+	hint:SetText(L["Ctrl+C copies the selected text"])
 
-	local close = ns.Widgets.FlatButton(frame, "Close", 90)
+	local close = ns.Widgets.FlatButton(frame, L["Close"], 100)
 	close:SetPoint("BOTTOMRIGHT", -SIDE, 14)
 	close:SetScript("OnClick", function() frame:Hide() end)
 
-	local selectAll = ns.Widgets.FlatButton(frame, "Select all", 90)
+	local selectAll = ns.Widgets.FlatButton(frame, L["Select all"], 120)
 	selectAll:SetPoint("RIGHT", close, "LEFT", -8, 0)
 	selectAll:SetScript("OnClick", SelectAll)
 end
@@ -112,7 +113,7 @@ end
 function CopyBox.Show(heading, text)
 	if not frame then Create() end
 	original = text or ""
-	title:SetText(heading or "Copy")
+	title:SetText(heading or L["Copy"])
 	edit:SetText(original)
 	scroll:SetVerticalScroll(0)
 	-- Protected in combat; a frame that swallows keys there is worse than no Escape.

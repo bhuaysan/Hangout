@@ -1,4 +1,5 @@
 local _, ns = ...
+local L = ns.L
 
 -- Typing indicators, read receipts and reactions between Hangout users.
 -- Addon messages are invisible to players without Hangout, and everything here
@@ -257,7 +258,7 @@ function Protocol.ToggleReaction(key, messageId, emoji)
 	local ref = Protocol.Hash(message.x)
 	local occurrence = OccurrenceOf(conv, message, ref)
 	if not Transmit(key, enable and "A" or "X", ref, emoji, occurrence > 0 and occurrence or nil) then
-		ns.Print("That reaction can't be sent right now.")
+		ns.Print(L["That reaction can't be sent right now."])
 		return
 	end
 	SetReaction(message, emoji, REACTION_MINE, enable)

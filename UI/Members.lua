@@ -1,4 +1,5 @@
 local _, ns = ...
+local L = ns.L
 
 local Members = {}
 ns.Members = Members
@@ -151,9 +152,9 @@ function Members.CountText(list, showTotal)
 	for _, member in ipairs(list) do
 		if member.online then online = online + 1 end
 	end
-	local text = online .. " online"
+	local text = L["%d online"]:format(online)
 	if showTotal then
-		text = text .. "  ·  " .. #list .. " members"
+		text = text .. "  ·  " .. L["%d members"]:format(#list)
 	end
 	return text
 end
@@ -166,10 +167,10 @@ end
 -- What the tooltip says about a member besides the name.
 function Members.DetailText(member)
 	local parts = {}
-	if member.level then parts[#parts + 1] = "Level " .. member.level end
+	if member.level then parts[#parts + 1] = L["Level %d"]:format(member.level) end
 	if member.rank then parts[#parts + 1] = member.rank end
-	if member.leader and not member.rank then parts[#parts + 1] = "Leader" end
-	if not member.online then parts[#parts + 1] = "Offline" end
+	if member.leader and not member.rank then parts[#parts + 1] = L["Leader"] end
+	if not member.online then parts[#parts + 1] = L["Offline"] end
 	return table.concat(parts, "  ·  ")
 end
 
@@ -186,7 +187,7 @@ end
 -- Rows --------------------------------------------------------------------
 
 function Members.BuildElements(list)
-	local elements = { { kind = "header", label = "MEMBERS" } }
+	local elements = { { kind = "header", label = L["MEMBERS"] } }
 	for _, member in ipairs(list or {}) do
 		elements[#elements + 1] = { kind = "member", member = member }
 	end

@@ -1,4 +1,5 @@
 local _, ns = ...
+local L = ns.L
 
 local Util = {}
 ns.Util = Util
@@ -27,7 +28,7 @@ function Util.ShortTime(timestamp, now)
 		return date("%H:%M", timestamp)
 	end
 	if date("%Y-%m-%d", timestamp) == date("%Y-%m-%d", now - 86400) then
-		return "Yesterday"
+		return L["Yesterday"]
 	end
 	return date("%b ", timestamp) .. tonumber(date("%d", timestamp))
 end

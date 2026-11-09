@@ -1,4 +1,5 @@
 local _, ns = ...
+local L = ns.L
 
 -- The only file that touches raw chat event payloads. Payload fields can be
 -- secret values: comparing one, measuring it with #, or using it as a table
@@ -12,22 +13,22 @@ Capture.FLAG_GM = 1
 
 local RECOVERY_DELAY = 1
 
-local LOCKED_META = { name = "During restriction" }
+local LOCKED_META = { name = L["During restriction"] }
 
 local ROUTES = {
 	CHAT_MSG_WHISPER = { kind = "whisper" },
 	CHAT_MSG_WHISPER_INFORM = { kind = "whisper", out = true },
 	CHAT_MSG_BN_WHISPER = { kind = "bnet" },
 	CHAT_MSG_BN_WHISPER_INFORM = { kind = "bnet", out = true },
-	CHAT_MSG_GUILD = { kind = "guild", prefix = "G", label = "Guild" },
-	CHAT_MSG_OFFICER = { kind = "guild", prefix = "O", label = "Officer" },
-	CHAT_MSG_PARTY = { kind = "group", key = "P:party", label = "Party" },
-	CHAT_MSG_PARTY_LEADER = { kind = "group", key = "P:party", label = "Party" },
-	CHAT_MSG_RAID = { kind = "group", key = "R:raid", label = "Raid" },
-	CHAT_MSG_RAID_LEADER = { kind = "group", key = "R:raid", label = "Raid" },
-	CHAT_MSG_RAID_WARNING = { kind = "group", key = "R:raid", label = "Raid" },
-	CHAT_MSG_INSTANCE_CHAT = { kind = "group", key = "I:instance", label = "Instance" },
-	CHAT_MSG_INSTANCE_CHAT_LEADER = { kind = "group", key = "I:instance", label = "Instance" },
+	CHAT_MSG_GUILD = { kind = "guild", prefix = "G", label = L["Guild"] },
+	CHAT_MSG_OFFICER = { kind = "guild", prefix = "O", label = L["Officer"] },
+	CHAT_MSG_PARTY = { kind = "group", key = "P:party", label = L["Party"] },
+	CHAT_MSG_PARTY_LEADER = { kind = "group", key = "P:party", label = L["Party"] },
+	CHAT_MSG_RAID = { kind = "group", key = "R:raid", label = L["Raid"] },
+	CHAT_MSG_RAID_LEADER = { kind = "group", key = "R:raid", label = L["Raid"] },
+	CHAT_MSG_RAID_WARNING = { kind = "group", key = "R:raid", label = L["Raid"] },
+	CHAT_MSG_INSTANCE_CHAT = { kind = "group", key = "I:instance", label = L["Instance"] },
+	CHAT_MSG_INSTANCE_CHAT_LEADER = { kind = "group", key = "I:instance", label = L["Instance"] },
 	CHAT_MSG_CHANNEL = { kind = "channel" },
 }
 
@@ -119,7 +120,7 @@ end
 local function HandleBattleNet(route, text, bnSenderID, isGM)
 	local tag = bnSenderID and ns.Identity.BattleTag(bnSenderID)
 	local key = tag and ("B:" .. tag) or ("B:?" .. tostring(bnSenderID))
-	ns.Store.Add(key, { name = tag or "Battle.net friend", class = tag and ns.Identity.ClassForTag(tag) }, {
+	ns.Store.Add(key, { name = tag or L["Battle.net friend"], class = tag and ns.Identity.ClassForTag(tag) }, {
 		t = GetServerTime(),
 		x = text,
 		o = route.out and 1 or nil,

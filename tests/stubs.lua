@@ -63,6 +63,8 @@ function stubs.Install()
 
 	_G.canaccessvalue = function(value) return not IsSecret(value) end
 	_G.issecretvalue = IsSecret
+	stubs.locale = "enUS"
+	_G.GetLocale = function() return stubs.locale end
 	_G.GetServerTime = function() return stubs.serverTime end
 	_G.GetNormalizedRealmName = function() return "Thunderstrike" end
 	-- stubs.group maps unit tokens to { name, surname, class, offline, afk, dnd, leader, level }.

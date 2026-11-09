@@ -1,10 +1,11 @@
 local _, ns = ...
+local L = ns.L
 
 local Quiet = {}
 ns.Quiet = Quiet
 
 local INSTANCE_TYPES = { party = true, raid = true, pvp = true, arena = true }
-local REASON_LABELS = { instance = "instance", raidCombat = "raid combat" }
+local REASON_LABELS = { instance = L["instance"], raidCombat = L["raid combat"] }
 
 local lastReason
 -- The combat events fire before every API agrees that combat has started or

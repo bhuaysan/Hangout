@@ -1,4 +1,5 @@
 local _, ns = ...
+local L = ns.L
 
 local Search = {}
 ns.Search = Search
@@ -107,7 +108,7 @@ local function SenderMatches(from, entry, message)
 end
 
 local function SenderOf(entry, message)
-	if message.o == 1 then return "You" end
+	if message.o == 1 then return L["You"] end
 	if message.s then return ns.Store.SenderLabel(message.s) end
 	return ns.Store.LabelFor(entry.key, entry.conv)
 end

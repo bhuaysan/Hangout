@@ -1,11 +1,12 @@
 local _, ns = ...
+local L = ns.L
 
 local PlayerMenu = {}
 ns.PlayerMenu = PlayerMenu
 
 local function ConfirmBlockPlayer(name)
-	ns.Prompt.Confirm("Block " .. ns.Util.DisplayName(name) .. "? Their messages won't appear in Hangout.",
-		"Block", function()
+	ns.Prompt.Confirm(L["Block %s? Their messages won't appear in Hangout."]:format(ns.Util.DisplayName(name)),
+		L["Block"], function()
 			ns.Filter.BlockPlayer(name)
 			if ns.Store.Get("W:" .. name) then ns.Store.Delete("W:" .. name) end
 		end)
@@ -30,16 +31,16 @@ function PlayerMenu.Items(name)
 	local isMe = name == ns.me
 	if not isMe then
 		if not IsWhisperWith(name) then
-			items[#items + 1] = { label = "Whisper", action = function() ns.Window.Select(ns.Store.StartWhisper(name)) end }
+			items[#items + 1] = { label = L["Whisper"], action = function() ns.Window.Select(ns.Store.StartWhisper(name)) end }
 		end
-		items[#items + 1] = { label = "Invite to group", action = function() C_PartyInfo.InviteUnit(name) end }
-		items[#items + 1] = { label = "Add friend", action = function() C_FriendList.AddFriend(name) end }
-		items[#items + 1] = { label = "Who", action = function() RunWho(name) end }
+		items[#items + 1] = { label = L["Invite to group"], action = function() C_PartyInfo.InviteUnit(name) end }
+		items[#items + 1] = { label = L["Add friend"], action = function() C_FriendList.AddFriend(name) end }
+		items[#items + 1] = { label = L["Who"], action = function() RunWho(name) end }
 	end
-	items[#items + 1] = { label = "Copy name", action = function() ns.CopyBox.Show("Copy name", name) end }
+	items[#items + 1] = { label = L["Copy name"], action = function() ns.CopyBox.Show(L["Copy name"], name) end }
 	if not isMe then
 		items[#items + 1] = { divider = true }
-		items[#items + 1] = { label = "Block", action = function() ConfirmBlockPlayer(name) end }
+		items[#items + 1] = { label = L["Block"], action = function() ConfirmBlockPlayer(name) end }
 	end
 	return items
 end

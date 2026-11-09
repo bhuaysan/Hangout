@@ -1,4 +1,5 @@
 local _, ns = ...
+local L = ns.L
 
 local Glance = {}
 ns.Glance = Glance
@@ -146,7 +147,7 @@ end
 function Glance.Show(key, conv, record)
 	if not frame then Create() end
 	local name = ShortName(key, conv)
-	if record.f == ns.Capture.FLAG_GM then name = name .. "  GM" end
+	if record.f == ns.Capture.FLAG_GM then name = name .. "  " .. L["GM"] end
 	lines[#lines + 1] = {
 		key = key,
 		name = name,

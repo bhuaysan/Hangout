@@ -1,4 +1,5 @@
 local _, ns = ...
+local L = ns.L
 
 local Composer = {}
 ns.Composer = Composer
@@ -6,10 +7,10 @@ ns.Composer = Composer
 local MAX_TOTAL_BYTES = 1020
 
 local REASON_TEXT = {
-	restricted = "Chat is restricted right now, so Hangout can't send this. Your text is still here. For something urgent, use normal chat.",
-	tooLong = "That message is too long to send.",
-	slash = "Slash commands only work in normal chat.",
-	unavailable = "This conversation can't receive messages right now.",
+	restricted = L["Chat is restricted right now, so Hangout can't send this. Your text is still here. For something urgent, use normal chat."],
+	tooLong = L["That message is too long to send."],
+	slash = L["Slash commands only work in normal chat."],
+	unavailable = L["This conversation can't receive messages right now."],
 }
 
 local FIELD_SIDE = 14
@@ -38,7 +39,7 @@ local function UpdateReplyBar()
 	if not replyBar then return end
 	replyBar:SetShown(reply ~= nil)
 	if reply then
-		replyBar.text:SetText("Replying to " .. reply.sender .. ": " .. reply.snippet)
+		replyBar.text:SetText(L["Replying to %s: %s"]:format(reply.sender, reply.snippet))
 	end
 end
 
@@ -79,7 +80,7 @@ local function CreateReplyBar(parent)
 
 	ns.Widgets.RoundedFill(replyBar, "popup", "BACKGROUND"):SetAllPoints()
 
-	local close = ns.Widgets.IconButton(replyBar, "close", REPLY_BAR_HEIGHT, 10, "Cancel reply")
+	local close = ns.Widgets.IconButton(replyBar, "close", REPLY_BAR_HEIGHT, 10, L["Cancel reply"])
 	close:SetPoint("RIGHT", -2, 0)
 	close:SetScript("OnClick", function() ClearReply(ns.selectedKey) end)
 
@@ -353,7 +354,7 @@ function Composer.Create(parent)
 
 	placeholder = ns.Widgets.Text(box, "HangoutMessageFont", "muted")
 	placeholder:SetPoint("LEFT")
-	placeholder:SetText("Message...")
+	placeholder:SetText(L["Message..."])
 
 	hooksecurefunc(ChatFrameUtil, "InsertLink", function(link)
 		if canaccessvalue(link) and link and box:HasFocus() then
@@ -365,14 +366,14 @@ end
 local function UpdateHint()
 	if not placeholder then return end
 	if not ns.selectedKey then
-		placeholder:SetText("Pick a chat to start typing.")
+		placeholder:SetText(L["Pick a chat to start typing."])
 	elseif ns.Lockdown.IsActive() then
-		placeholder:SetText("Restricted right now. Use normal chat to reply.")
+		placeholder:SetText(L["Restricted right now. Use normal chat to reply."])
 	elseif ns.selectedKey == ns.Capture.LOCKED_KEY then
-		placeholder:SetText("Use normal chat to reply to these messages.")
+		placeholder:SetText(L["Use normal chat to reply to these messages."])
 	else
 		local conv = ns.Store.Get(ns.selectedKey)
-		placeholder:SetText("Message " .. (conv and ns.Store.LabelFor(ns.selectedKey, conv) or "..."))
+		placeholder:SetText(conv and L["Message %s"]:format(ns.Store.LabelFor(ns.selectedKey, conv)) or L["Message..."])
 	end
 end
 

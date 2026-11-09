@@ -1,4 +1,5 @@
 local _, ns = ...
+local L = ns.L
 
 local Store = {}
 ns.Store = Store
@@ -160,7 +161,7 @@ function Store.LastActivity(key, conv)
 	local messages = conv.m
 	local last = messages and messages[#messages]
 	if newestLocked and (not last or newestLocked.t >= last.t) then
-		return "Restricted message", newestLocked.t
+		return L["Restricted message"], newestLocked.t
 	end
 	if not last then return nil end
 

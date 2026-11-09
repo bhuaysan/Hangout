@@ -1,4 +1,5 @@
 local _, ns = ...
+local L = ns.L
 
 local Theme = {}
 ns.Theme = Theme
@@ -6,11 +7,11 @@ ns.Theme = Theme
 local EXPORT_PREFIX = "Hangout1"
 
 Theme.CUSTOMIZABLE = {
-	{ token = "bg", label = "Background" },
-	{ token = "sidebar", label = "Sidebar" },
-	{ token = "text", label = "Text" },
-	{ token = "muted", label = "Secondary text" },
-	{ token = "accent", label = "Accent" },
+	{ token = "bg", label = L["Background"] },
+	{ token = "sidebar", label = L["Sidebar"] },
+	{ token = "text", label = L["Text"] },
+	{ token = "muted", label = L["Secondary text"] },
+	{ token = "accent", label = L["Accent"] },
 }
 
 -- Below this the window stops being readable over a bright game world.
@@ -67,7 +68,7 @@ end
 -- Preset keys may only contain letters, or their exported theme strings can't be imported.
 local PRESETS = {
 	midnight = {
-		label = "Midnight",
+		label = L["Midnight"],
 		overlays = DARK_OVERLAYS,
 		colors = {
 			bg = { 0.12, 0.125, 0.14 },
@@ -78,7 +79,7 @@ local PRESETS = {
 		},
 	},
 	ember = {
-		label = "Ember",
+		label = L["Ember"],
 		overlays = DARK_OVERLAYS,
 		colors = {
 			bg = { 0.15, 0.12, 0.11 },
@@ -89,7 +90,7 @@ local PRESETS = {
 		},
 	},
 	paper = {
-		label = "Paper",
+		label = L["Paper"],
 		overlays = LIGHT_OVERLAYS,
 		colors = {
 			bg = { 0.95, 0.94, 0.91 },
