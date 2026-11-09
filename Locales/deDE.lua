@@ -273,3 +273,8 @@ L["September"] = "September"
 L["October"] = "Oktober"
 L["November"] = "November"
 L["December"] = "Dezember"
+
+-- Moving
+L["See-through while moving"] = "Beim Laufen durchsichtig"
+L["Opacity while moving"] = "Deckkraft beim Laufen"
+L["No unread whispers"] = "Keine ungelesenen Flüsternachrichten"

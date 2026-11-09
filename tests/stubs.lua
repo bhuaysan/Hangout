@@ -108,6 +108,8 @@ function stubs.Install()
 		return "Shaman", "SHAMAN"
 	end
 	_G.InCombatLockdown = function() return stubs.inCombat end
+	stubs.moving = false
+	_G.IsPlayerMoving = function() return stubs.moving end
 	_G.GetTime = function() return stubs.time end
 	_G.PlaySound = function(kit) stubs.played[#stubs.played + 1] = kit end
 	_G.FlashClientIcon = function() stubs.flashes = stubs.flashes + 1 end
@@ -221,7 +223,10 @@ function stubs.Install()
 	_G.C_Timer = {
 		After = function(_, callback) callback() end,
 		NewTicker = function() end,
-		NewTimer = function() return { Cancel = function() end } end,
+		NewTimer = function(_, callback)
+			stubs.lastTimer = callback
+			return { Cancel = function() end }
+		end,
 	}
 	_G.RAID_CLASS_COLORS = { SHAMAN = { r = 0, g = 0.44, b = 0.87 } }
 	_G.CLASS_ICON_TCOORDS = { SHAMAN = { 0.25, 0.5, 0.25, 0.5 } }
@@ -247,6 +252,7 @@ function stubs.Install()
 		rawset(frame, "UnregisterEvent", function(self, event) self.events[event] = nil end)
 		rawset(frame, "SetScript", function(self, name, handler) rawset(self, name, handler) end)
 		rawset(frame, "GetFrameLevel", function() return 1 end)
+		rawset(frame, "IsMouseOver", function() return stubs.mouseOver == true end)
 		stubs.frames[#stubs.frames + 1] = frame
 		return frame
 	end

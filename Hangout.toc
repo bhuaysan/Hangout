@@ -44,5 +44,6 @@ UI\Keys.lua
 UI\Toast.lua
 UI\Glance.lua
 UI\Settings.lua
+UI\MoveFade.lua
 UI\Window.lua
 UI\Launcher.lua

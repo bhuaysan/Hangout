@@ -102,10 +102,13 @@ function Store.Add(key, meta, record, recovered)
 		conv.stranger = nil
 	end
 
-	if record.o == 1 or key == ns.activeKey then
+	-- A whisper to yourself arrives twice, and its outgoing copy says nothing
+	-- about whether the incoming one was read.
+	local echoToSelf = record.o == 1 and ns.me ~= nil and key == "W:" .. ns.me
+	if key == ns.activeKey or (record.o == 1 and not echoToSelf) then
 		conv.unread = nil
 		conv.readId = conv.nextId
-	elseif CountsUnread(key) or mention then
+	elseif not echoToSelf and (CountsUnread(key) or mention) then
 		conv.unread = (conv.unread or 0) + 1
 	end
 
@@ -277,16 +280,32 @@ function Store.StartWhisper(typedName)
 end
 
 -- Muted chats and requests keep their own badge but don't add to the total.
-function Store.TotalUnread()
+-- Whispers, plus lines locked by a restriction: most of those are whispers
+-- whose sender can't be read yet.
+function Store.IsPersonal(key)
+	local category = ns.CategoryOf(key)
+	return category == "whisper" or category == "live"
+end
+
+local function SumUnread(counts)
 	local total = 0
 	for _, conversations in ipairs({ ns.db.conv, ns.session.conv }) do
 		for key, conv in pairs(conversations) do
-			if not conv.mute and not conv.req then
+			if not conv.mute and not conv.req and (not counts or counts(key)) then
 				total = total + Store.UnreadCount(key, conv)
 			end
 		end
 	end
 	return total
+end
+
+function Store.TotalUnread()
+	return SumUnread()
+end
+
+-- Unread messages written to the player personally.
+function Store.WhisperUnread()
+	return SumUnread(Store.IsPersonal)
 end
 
 -- Returns whether anything was unread, so callers can decide what to announce.

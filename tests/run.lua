@@ -3882,6 +3882,191 @@ Test("dates and the sidebar preview follow the German locale", function()
 	Equal(ns.Store.LastActivity(NOVA, ns.Store.Get(NOVA)), "Du: hallo")
 end)
 
+Test("the glance strip dims after a while instead of going away", function()
+	local ns = Boot()
+	Chat(ns, "CHAT_MSG_WHISPER", { text = "hi", name = "Other Person" })
+	Equal(ns.Glance.IsDimmed(), false)
+	stubs.mouseOver = true
+	stubs.lastTimer()
+	Equal(ns.Glance.IsDimmed(), false, "not while the mouse is on it")
+	stubs.mouseOver = false
+	stubs.lastTimer()
+	Equal(ns.Glance.IsDimmed(), true)
+	Equal(#ns.Glance.Lines(), 1)
+
+	Chat(ns, "CHAT_MSG_WHISPER", { text = "again", name = "Other Person" })
+	Equal(ns.Glance.IsDimmed(), false, "a new whisper is worth full strength")
+	Equal(#ns.Glance.Lines(), 2)
+end)
+
+Test("glance lines survive combat and come back dimmed", function()
+	local ns = Boot()
+	Chat(ns, "CHAT_MSG_WHISPER", { text = "hi", name = "Other Person" })
+	FireCombat("PLAYER_REGEN_DISABLED")
+	Equal(#ns.Glance.Lines(), 1)
+	FireCombat("PLAYER_REGEN_ENABLED")
+	Equal(#ns.Glance.Lines(), 1)
+	Equal(ns.Glance.IsDimmed(), true)
+end)
+
+Test("reading or answering a chat removes only its glance lines", function()
+	local ns = Boot()
+	Chat(ns, "CHAT_MSG_WHISPER", { text = "one", name = "Other Person" })
+	Chat(ns, "CHAT_MSG_WHISPER", { text = "two", name = "Ada Vale" })
+	ns.Store.MarkRead("W:Other Person")
+	Equal(#ns.Glance.Lines(), 1)
+	Equal(ns.Glance.Lines()[1].text, "two")
+	Chat(ns, "CHAT_MSG_WHISPER_INFORM", { text = "reply", name = "Ada Vale" })
+	Equal(#ns.Glance.Lines(), 0)
+end)
+
+Test("a whisper to yourself keeps its glance line despite the echo", function()
+	local ns = Boot()
+	Chat(ns, "CHAT_MSG_WHISPER", { text = "test", name = ns.me })
+	Chat(ns, "CHAT_MSG_WHISPER_INFORM", { text = "test", name = ns.me })
+	Equal(#ns.Glance.Lines(), 1)
+end)
+
+Test("glance lines carry the time they arrived", function()
+	local ns = Boot()
+	Chat(ns, "CHAT_MSG_WHISPER", { text = "hi", name = "Other Person" })
+	Equal(ns.Glance.Lines()[1].time, "12:00")
+end)
+
+local function FakeWindow()
+	local window = { alpha = 1, hovered = false }
+	function window:GetAlpha() return self.alpha end
+	function window:SetAlpha(value) self.alpha = value end
+	function window:IsMouseOver() return self.hovered end
+	return window
+end
+
+local function Tick(ns, window, seconds)
+	for _ = 1, math.floor(seconds * 20 + 0.5) do
+		ns.MoveFade.Update(window, 0.05)
+	end
+end
+
+Test("the window starts turning see-through as soon as the character moves", function()
+	local ns = Boot()
+	local window = FakeWindow()
+	stubs.moving = true
+	Tick(ns, window, 0.05)
+	assert(window.alpha < 1, "the very first frame of movement already counts")
+	Tick(ns, window, 1)
+	Equal(window.alpha, 0.4)
+	stubs.moving = false
+	Tick(ns, window, 0.5)
+	Equal(window.alpha, 1)
+end)
+
+Test("the mouse, typing and the setting keep the moving window solid", function()
+	local ns = Boot()
+	local window = FakeWindow()
+	stubs.moving = true
+	Tick(ns, window, 1)
+	Equal(window.alpha, 0.4)
+
+	window.hovered = true
+	Tick(ns, window, 0.5)
+	Equal(window.alpha, 1, "hovered")
+	window.hovered = false
+
+	ns.Composer.HasFocus = function() return true end
+	Tick(ns, window, 0.5)
+	Equal(window.alpha, 1, "typing")
+	ns.Composer.HasFocus = function() return false end
+
+	ns.Sidebar.HasSearchFocus = function() return true end
+	Tick(ns, window, 0.5)
+	Equal(window.alpha, 1, "searching")
+	ns.Sidebar.HasSearchFocus = function() return false end
+
+	ns.Set("moveFade", false)
+	Tick(ns, window, 0.5)
+	Equal(window.alpha, 1, "turned off")
+end)
+
+Test("moving never touches a window that combat controls", function()
+	local ns = Boot()
+	local window = FakeWindow()
+	stubs.moving = true
+	ns.Window.IsFaded = function() return true end
+	window.alpha = 0.2
+	Tick(ns, window, 1)
+	Equal(window.alpha, 0.2, "combat fade keeps its own opacity")
+
+	ns.Window.IsFaded = function() return false end
+	window.alpha = 1
+	stubs.inCombat = true
+	Tick(ns, window, 1)
+	Equal(window.alpha, 1, "stay visible in combat means visible")
+end)
+
+Test("the minimap button only speaks up for whispers", function()
+	local ns = Load()
+	local state = ns.Launcher.BadgeState
+	Equal(state(0, false), nil)
+	local whispers = state(2, false)
+	Equal(whispers.text, "2")
+	Equal(whispers.pulse, true)
+end)
+
+Test("Do Not Disturb keeps the whisper count but stops the pulse", function()
+	local ns = Load()
+	local silent = ns.Launcher.BadgeState(2, true)
+	Equal(silent.text, "2")
+	Equal(silent.pulse, false)
+end)
+
+Test("the minimap tooltip can list whisper chats only", function()
+	local ns = Boot()
+	Chat(ns, "CHAT_MSG_WHISPER", { text = "hi", name = "Other Person" })
+	Chat(ns, "CHAT_MSG_GUILD", { text = "gz", name = "Ada Vale" })
+	Equal(#ns.Broker.TooltipLines(ns.Store.List()), 2)
+	local personal = ns.Broker.TooltipLines(ns.Store.List(), true)
+	Equal(#personal, 1)
+	Equal(personal[1].name, "Other Person")
+end)
+
+Test("whisper unread counts leave out group chats, muted chats and requests", function()
+	local ns = Boot()
+	Chat(ns, "CHAT_MSG_WHISPER", { text = "one", name = "Other Person" })
+	Chat(ns, "CHAT_MSG_WHISPER", { text = "two", name = "Other Person" })
+	Chat(ns, "CHAT_MSG_GUILD", { text = "gz", name = "Ada Vale" })
+	Equal(ns.Store.WhisperUnread(), 2)
+	Equal(ns.Store.TotalUnread(), 3)
+	ns.Store.SetField("W:Other Person", "mute", true)
+	Equal(ns.Store.WhisperUnread(), 0)
+end)
+
+Test("whispers locked by a restriction count as personal", function()
+	local ns = Boot()
+	Chat(ns, "CHAT_MSG_WHISPER", { text = stubs.Secret(), name = stubs.Secret() })
+	Equal(ns.Store.WhisperUnread(), 1)
+end)
+
+Test("a whisper to yourself stays unread despite its echo, in either order", function()
+	local ns = Boot()
+	local key = "W:" .. ns.me
+	Chat(ns, "CHAT_MSG_WHISPER", { text = "one", name = ns.me })
+	Chat(ns, "CHAT_MSG_WHISPER_INFORM", { text = "one", name = ns.me })
+	Equal(ns.Store.UnreadCount(key, ns.Store.Get(key)), 1)
+	Equal(ns.Store.WhisperUnread(), 1)
+	Chat(ns, "CHAT_MSG_WHISPER_INFORM", { text = "two", name = ns.me })
+	Chat(ns, "CHAT_MSG_WHISPER", { text = "two", name = ns.me })
+	Equal(ns.Store.UnreadCount(key, ns.Store.Get(key)), 2)
+end)
+
+Test("answering someone else still marks their chat as read", function()
+	local ns = Boot()
+	local key = "W:Other Person"
+	Chat(ns, "CHAT_MSG_WHISPER", { text = "hi", name = "Other Person" })
+	Equal(ns.Store.UnreadCount(key, ns.Store.Get(key)), 1)
+	Chat(ns, "CHAT_MSG_WHISPER_INFORM", { text = "hello", name = "Other Person" })
+	Equal(ns.Store.UnreadCount(key, ns.Store.Get(key)), 0)
+end)
+
 local failures = 0
 for _, test in ipairs(tests) do
 	local ok, err = xpcall(test.fn, debug.traceback)

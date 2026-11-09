@@ -387,6 +387,10 @@ local function UpdateHint()
 	end
 end
 
+function Composer.HasFocus()
+	return box ~= nil and box:HasFocus()
+end
+
 function Composer.ClearFocus()
 	if box then box:ClearFocus() end
 end

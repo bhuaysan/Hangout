@@ -26,11 +26,11 @@ end
 
 -- Pure: up to MAX_TOOLTIP_CHATS unread chats from a Store.List() result.
 -- Returns { { name = ..., count = ... } }; the list is already newest first.
-function Broker.TooltipLines(list)
+function Broker.TooltipLines(list, onlyPersonal)
 	local lines = {}
 	for _, entry in ipairs(list) do
 		local conv = entry.conv
-		if not conv.req then
+		if not conv.req and (not onlyPersonal or ns.Store.IsPersonal(entry.key)) then
 			local count = ns.Store.UnreadCount(entry.key, conv)
 			if count > 0 then
 				lines[#lines + 1] = { name = ns.Store.LabelFor(entry.key, conv), count = count }
@@ -46,15 +46,20 @@ local function Update()
 	dataObject.text = Broker.Text(ns.Store.TotalUnread(), ns.Get("dnd"), ns.Quiet.IsActive())
 end
 
-local function ShowTooltip(tooltip)
-	tooltip:AddLine("Hangout")
-	local lines = Broker.TooltipLines(ns.Store.List())
+-- Adds who is waiting for an answer to a tooltip.
+function Broker.AddUnreadLines(tooltip, onlyPersonal)
+	local lines = Broker.TooltipLines(ns.Store.List(), onlyPersonal)
 	if #lines == 0 then
-		tooltip:AddLine(L["No unread messages"], 1, 1, 1)
+		tooltip:AddLine(onlyPersonal and L["No unread whispers"] or L["No unread messages"], 1, 1, 1)
 	end
 	for _, line in ipairs(lines) do
 		tooltip:AddDoubleLine(line.name, line.count, 1, 1, 1, 1, 1, 1)
 	end
+end
+
+local function ShowTooltip(tooltip)
+	tooltip:AddLine("Hangout")
+	Broker.AddUnreadLines(tooltip)
 	tooltip:AddLine(L["Click to open. Right-click for options."], 0.6, 0.6, 0.6)
 end
 

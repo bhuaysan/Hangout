@@ -571,6 +571,10 @@ function Sidebar.SetCollapsed(isCollapsed)
 	Sidebar.Refresh()
 end
 
+function Sidebar.HasSearchFocus()
+	return searchBox ~= nil and searchBox:HasFocus()
+end
+
 function Sidebar.ClearSearchFocus()
 	if searchBox then searchBox:ClearFocus() end
 end
